@@ -32,6 +32,7 @@ import {
     checkAndExecuteSeason, recalculateAllRanks,
     setDecayExempt, getDecayExemptMembers,
     applyDecay, cleanupOldRpTransactions,
+    acquireCronLock, cleanupCronLocks,
 } from './db.js'
 import cron from 'node-cron'
 
@@ -866,12 +867,19 @@ app.post('/api/ranks/recalculate', (req, res) => {
 // 毎日AM4:00 JST (= UTC 19:00) に減衰処理 + シーズンチェック
 cron.schedule('0 19 * * *', () => {
     try {
+        // 冪等性チェック: 今日既に実行済みならスキップ
+        if (!acquireCronLock('daily_maintenance')) {
+            console.log('🔄 Daily maintenance already executed today, skipping')
+            return
+        }
+
         const guilds = getGuilds()
         for (const guild of guilds) {
             applyDecay(guild.id)
             checkAndExecuteSeason(guild.id)
         }
         cleanupOldRpTransactions(120)
+        cleanupCronLocks()
         console.log('🔄 Daily rank maintenance completed')
     } catch (err) {
         console.error('Cron error:', err.message)

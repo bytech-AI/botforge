@@ -7,6 +7,8 @@ import {
     autoReconnect, getGuilds, getGuildMembers,
     registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, setupHandlers
 } from './bot.js'
+import { requireGuildId, requireIntParam, requireBody, maxLength, numberRange } from './middleware/validate.js'
+import { asyncHandler, notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js'
 import {
     initDatabase, getDb,
     getAllCommands, createCommand, updateCommand, deleteCommand,
@@ -43,7 +45,7 @@ const app = express()
 const PORT = process.env.PORT || 3001
 
 app.use(cors())
-app.use(express.json())
+app.use(express.json({ limit: '1mb' }))
 
 // Initialize database
 const db = initDatabase()
@@ -56,28 +58,17 @@ if (process.env.NODE_ENV === 'production') {
 // ============================
 // Bot Connection API
 // ============================
-app.post('/api/bot/connect', async (req, res) => {
-    const { token } = req.body
-    if (!token) return res.status(400).json({ error: 'トークンが必要です' })
+app.post('/api/bot/connect', requireBody('token'), asyncHandler(async (req, res) => {
+    const result = await connectBot(req.body.token)
+    setupHandlers(() => getAllCommands(), db)
+    res.json(result)
+}))
 
-    try {
-        const result = await connectBot(token)
-        setupHandlers(() => getAllCommands(), db)
-        res.json(result)
-    } catch (err) {
-        res.status(400).json({ error: err.message || '接続に失敗しました' })
-    }
-})
-
-app.post('/api/bot/disconnect', async (req, res) => {
-    try {
-        await disconnectBot()
-        clearToken()
-        res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
-})
+app.post('/api/bot/disconnect', asyncHandler(async (req, res) => {
+    await disconnectBot()
+    clearToken()
+    res.json({ success: true })
+}))
 
 app.get('/api/bot/status', (req, res) => {
     res.json(getBotStatus())
@@ -90,111 +81,80 @@ app.get('/api/guilds', (req, res) => {
     res.json(getGuilds())
 })
 
-app.get('/api/guilds/:guildId/members', async (req, res) => {
-    try {
-        const members = await getGuildMembers(req.params.guildId)
-        res.json(members)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
-})
+app.get('/api/guilds/:guildId/members', asyncHandler(async (req, res) => {
+    const members = await getGuildMembers(req.params.guildId)
+    res.json(members)
+}))
 
 // ============================
 // Commands API (DB-backed)
 // ============================
-app.get('/api/commands', (req, res) => {
+app.get('/api/commands', (req, res, next) => {
     try {
         res.json(getAllCommands())
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/commands', (req, res) => {
+app.post('/api/commands', (req, res, next) => {
     try {
         const cmd = createCommand(req.body)
         res.json(cmd)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/commands/:id', (req, res) => {
+app.put('/api/commands/:id', requireIntParam(), (req, res, next) => {
     try {
         updateCommand(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/commands/:id', (req, res) => {
+app.delete('/api/commands/:id', requireIntParam(), (req, res, next) => {
     try {
         deleteCommand(parseInt(req.params.id))
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // Sync commands to Discord
-app.post('/api/commands/sync', async (req, res) => {
-    const { guildId } = req.body
-    try {
-        const commands = getAllCommands()
-        const result = await registerSlashCommands(commands, guildId)
-        res.json(result)
-    } catch (err) {
-        res.status(400).json({ error: err.message })
-    }
-})
+app.post('/api/commands/sync', asyncHandler(async (req, res) => {
+    const commands = getAllCommands()
+    const result = await registerSlashCommands(commands, req.body.guildId)
+    res.json(result)
+}))
 
 // Fetch registered commands from Discord
-app.get('/api/commands/registered', async (req, res) => {
-    const { guildId } = req.query
-    try {
-        const registered = await fetchRegisteredCommands(guildId)
-        res.json(registered)
-    } catch (err) {
-        res.status(400).json({ error: err.message })
-    }
-})
+app.get('/api/commands/registered', asyncHandler(async (req, res) => {
+    const registered = await fetchRegisteredCommands(req.query.guildId)
+    res.json(registered)
+}))
 
 // Delete a registered Discord command
-app.delete('/api/commands/registered/:commandId', async (req, res) => {
-    const { guildId } = req.query
-    try {
-        const result = await deleteRegisteredCommand(req.params.commandId, guildId)
-        res.json(result)
-    } catch (err) {
-        res.status(400).json({ error: err.message })
-    }
-})
+app.delete('/api/commands/registered/:commandId', asyncHandler(async (req, res) => {
+    const result = await deleteRegisteredCommand(req.params.commandId, req.query.guildId)
+    res.json(result)
+}))
 
 // ============================
 // Points Rules API (DB-backed)
 // ============================
-app.get('/api/points/rules', (req, res) => {
+app.get('/api/points/rules', (req, res, next) => {
     try {
         res.json(getAllPointRules())
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/points/rules', (req, res) => {
+app.put('/api/points/rules', (req, res, next) => {
     try {
         updatePointRules(req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Points Leaderboard API
 // ============================
-app.get('/api/points/leaderboard', (req, res) => {
+app.get('/api/points/leaderboard', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json([])
     try {
@@ -212,32 +172,27 @@ app.get('/api/points/leaderboard', (req, res) => {
             }
         })
         res.json(enriched)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Points Stats API
 // ============================
-app.get('/api/points/stats', (req, res) => {
+app.get('/api/points/stats', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json({ totalPointsIssued: 0, averagePoints: 0, maxStreak: 0, rewardsClaimed: 0 })
     try {
         const stats = getPointStats(guildId)
         res.json(stats)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Points Member API
 // ============================
-app.get('/api/points/members/:userId', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/points/members/:userId', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         const member = getOrCreateMember(guildId, req.params.userId)
         const rank = getUserRank(guildId, req.params.userId)
         const rankInfo = getMemberRank(guildId, req.params.userId)
@@ -250,29 +205,22 @@ app.get('/api/points/members/:userId', (req, res) => {
             rank_color: rankInfo.color,
             rank_icon: rankInfo.icon,
         })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // Admin adjust points
-app.post('/api/points/adjust', (req, res) => {
-    const { guildId, userId, amount, reason } = req.body
-    if (!guildId || !userId || amount === undefined) {
-        return res.status(400).json({ error: 'guildId, userId, amountが必要です' })
-    }
+app.post('/api/points/adjust', requireBody('guildId', 'userId'), (req, res, next) => {
     try {
+        const { guildId, userId, amount, reason } = req.body
         const result = addPoints(guildId, userId, amount, 'admin_adjust', reason || '管理者による調整')
         res.json(result)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Points Transaction History API
 // ============================
-app.get('/api/points/transactions', (req, res) => {
+app.get('/api/points/transactions', (req, res, next) => {
     const { guildId, userId, limit } = req.query
     if (!guildId) return res.json([])
     try {
@@ -284,15 +232,13 @@ app.get('/api/points/transactions', (req, res) => {
                 .all(guildId, parseInt(limit) || 50)
             res.json(history)
         }
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Points Actions List API
 // ============================
-app.get('/api/points/actions', (req, res) => {
+app.get('/api/points/actions', (req, res, next) => {
     try {
         const rules = getAllPointRules()
         const actions = rules.filter(r => r.enabled).map(r => ({
@@ -304,9 +250,7 @@ app.get('/api/points/actions', (req, res) => {
             description: getActionDescription(r.action)
         }))
         res.json(actions)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 function getActionDescription(action) {
@@ -324,7 +268,7 @@ function getActionDescription(action) {
 // ============================
 // Points Economy Settings API
 // ============================
-app.get('/api/points/economy', (req, res) => {
+app.get('/api/points/economy', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json({
         transfer_fee_percent: 5, min_transfer_amount: 10,
@@ -334,296 +278,226 @@ app.get('/api/points/economy', (req, res) => {
     try {
         const settings = getEconomySettings(guildId)
         res.json(settings)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/points/economy', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/points/economy', requireGuildId, (req, res, next) => {
     try {
-        const settings = updateEconomySettings(guildId, req.body)
+        const settings = updateEconomySettings(req.query.guildId, req.body)
         res.json(settings)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Rewards API (DB-backed)
 // ============================
-app.get('/api/rewards', (req, res) => {
+app.get('/api/rewards', (req, res, next) => {
     try {
         res.json(getAllRewards())
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/rewards', (req, res) => {
+app.post('/api/rewards', (req, res, next) => {
     try {
         const reward = createReward(req.body)
         res.json(reward)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/rewards/:id', (req, res) => {
+app.put('/api/rewards/:id', requireIntParam(), (req, res, next) => {
     try {
         updateReward(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/rewards/:id', (req, res) => {
+app.delete('/api/rewards/:id', requireIntParam(), (req, res, next) => {
     try {
         deleteReward(parseInt(req.params.id))
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Gacha Settings API
 // ============================
-app.get('/api/gacha/settings', (req, res) => {
+app.get('/api/gacha/settings', (req, res, next) => {
     try {
         res.json(getGachaSettings())
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/gacha/settings/:id', (req, res) => {
+app.put('/api/gacha/settings/:id', requireIntParam(), (req, res, next) => {
     try {
         updateGachaSettings(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Auto Response API
 // ============================
-app.get('/api/auto-responses', (req, res) => {
-    const { guildId } = req.query
+app.get('/api/auto-responses', (req, res, next) => {
     try {
-        res.json(getAllAutoResponses(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getAllAutoResponses(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.post('/api/auto-responses', (req, res) => {
+app.post('/api/auto-responses', (req, res, next) => {
     try {
         const ar = createAutoResponse(req.body)
         res.json(ar)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/auto-responses/:id', (req, res) => {
+app.put('/api/auto-responses/:id', requireIntParam(), (req, res, next) => {
     try {
         updateAutoResponse(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/auto-responses/:id', (req, res) => {
+app.delete('/api/auto-responses/:id', requireIntParam(), (req, res, next) => {
     try {
         deleteAutoResponse(parseInt(req.params.id))
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Moderation Settings API
 // ============================
-app.get('/api/moderation/settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/moderation/settings', requireGuildId, (req, res, next) => {
     try {
-        res.json(getModerationSettings(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getModerationSettings(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/moderation/settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/moderation/settings', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         getModerationSettings(guildId) // ensure exists
         updateModerationSettings(guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Scheduled Messages API
 // ============================
-app.get('/api/scheduled-messages', (req, res) => {
+app.get('/api/scheduled-messages', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json([])
     try {
         res.json(getAllScheduledMessages(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/scheduled-messages', (req, res) => {
+app.post('/api/scheduled-messages', (req, res, next) => {
     try {
         const msg = createScheduledMessage(req.body)
         res.json(msg)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/scheduled-messages/:id', (req, res) => {
+app.put('/api/scheduled-messages/:id', requireIntParam(), (req, res, next) => {
     try {
         updateScheduledMessage(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/scheduled-messages/:id', (req, res) => {
+app.delete('/api/scheduled-messages/:id', requireIntParam(), (req, res, next) => {
     try {
         deleteScheduledMessage(parseInt(req.params.id))
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Welcome Settings API
 // ============================
-app.get('/api/welcome-settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/welcome-settings', requireGuildId, (req, res, next) => {
     try {
-        res.json(getWelcomeSettings(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getWelcomeSettings(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/welcome-settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/welcome-settings', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         getWelcomeSettings(guildId) // ensure exists
         updateWelcomeSettings(guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Embed Templates API
 // ============================
-app.get('/api/embed-templates', (req, res) => {
+app.get('/api/embed-templates', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json([])
     try {
         res.json(getAllEmbedTemplates(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/embed-templates', (req, res) => {
+app.post('/api/embed-templates', (req, res, next) => {
     try {
         const template = createEmbedTemplate(req.body)
         res.json(template)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/embed-templates/:id', (req, res) => {
+app.put('/api/embed-templates/:id', requireIntParam(), (req, res, next) => {
     try {
         updateEmbedTemplate(parseInt(req.params.id), req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/embed-templates/:id', (req, res) => {
+app.delete('/api/embed-templates/:id', requireIntParam(), (req, res, next) => {
     try {
         deleteEmbedTemplate(parseInt(req.params.id))
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Channel Multipliers API
 // ============================
-app.get('/api/points/channel-multipliers', (req, res) => {
+app.get('/api/points/channel-multipliers', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json([])
     try {
         res.json(getChannelMultipliers(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.put('/api/points/channel-multipliers', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/points/channel-multipliers', requireGuildId, (req, res, next) => {
     try {
-        updateChannelMultipliers(guildId, req.body.multipliers || [])
+        updateChannelMultipliers(req.query.guildId, req.body.multipliers || [])
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
 // Point Decay Settings API
 // ============================
-app.get('/api/points/decay-settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/points/decay-settings', requireGuildId, (req, res, next) => {
     try {
-        res.json(getPointDecaySettings(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getPointDecaySettings(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/points/decay-settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/points/decay-settings', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         getPointDecaySettings(guildId) // ensure exists
         updatePointDecaySettings(guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
@@ -631,132 +505,91 @@ app.put('/api/points/decay-settings', (req, res) => {
 // ============================
 
 // ランク設定
-app.get('/api/ranks/config', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/config', requireGuildId, (req, res, next) => {
     try {
-        res.json(getRankConfig(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getRankConfig(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/ranks/config', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/ranks/config', requireGuildId, (req, res, next) => {
     try {
-        updateRankConfig(guildId, req.body.ranks || [])
+        updateRankConfig(req.query.guildId, req.body.ranks || [])
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/ranks/config/tier', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.post('/api/ranks/config/tier', requireGuildId, (req, res, next) => {
     try {
-        addRankTier(guildId, req.body)
+        addRankTier(req.query.guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.delete('/api/ranks/config/tier/:rankKey', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.delete('/api/ranks/config/tier/:rankKey', requireGuildId, (req, res, next) => {
     try {
-        removeRankTier(guildId, req.params.rankKey)
+        removeRankTier(req.query.guildId, req.params.rankKey)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // 減衰設定
-app.get('/api/ranks/settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/settings', requireGuildId, (req, res, next) => {
     try {
-        res.json(getRankSettings(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getRankSettings(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/ranks/settings', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/ranks/settings', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         getRankSettings(guildId) // ensure exists
         updateRankSettings(guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // 減衰免除
-app.get('/api/ranks/exempt', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/exempt', requireGuildId, (req, res, next) => {
     try {
-        res.json(getDecayExemptMembers(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getDecayExemptMembers(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.post('/api/ranks/exempt', (req, res) => {
-    const { guildId, userId, exempt, exemptUntil } = req.body
-    if (!guildId || !userId) return res.status(400).json({ error: 'guildIdとuserIdが必要です' })
+app.post('/api/ranks/exempt', requireBody('guildId', 'userId'), (req, res, next) => {
     try {
+        const { guildId, userId, exempt, exemptUntil } = req.body
         setDecayExempt(guildId, userId, exempt, exemptUntil || null)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // RPルール
-app.get('/api/ranks/rp-rules', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
     try {
-        res.json(getRpRules(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getRpRules(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/ranks/rp-rules', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
     try {
-        updateRpRules(guildId, req.body.rules || [])
+        updateRpRules(req.query.guildId, req.body.rules || [])
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // メンバーランク情報
-app.get('/api/ranks/member/:userId', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/member/:userId', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         const info = getMemberRank(guildId, req.params.userId)
         const config = getRankConfig(guildId)
         const currentIdx = config.findIndex(r => r.rank_key === info.current_rank_key)
         const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
         res.json({ ...info, next_rank: nextRank })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.get('/api/ranks/leaderboard', (req, res) => {
+app.get('/api/ranks/leaderboard', (req, res, next) => {
     const { guildId, limit } = req.query
     if (!guildId) return res.json([])
     try {
@@ -767,98 +600,68 @@ app.get('/api/ranks/leaderboard', (req, res) => {
             return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: rankInfo.cp_multiplier }
         })
         res.json(enriched)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.get('/api/ranks/rp-history/:userId', (req, res) => {
+app.get('/api/ranks/rp-history/:userId', (req, res, next) => {
     const { guildId, limit } = req.query
     if (!guildId) return res.json([])
     try {
         res.json(getRpHistory(guildId, req.params.userId, parseInt(limit) || 20))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // シーズン設定
-app.get('/api/ranks/season', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/season', requireGuildId, (req, res, next) => {
     try {
-        res.json(getSeasonConfig(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json(getSeasonConfig(req.query.guildId))
+    } catch (err) { next(err) }
 })
 
-app.put('/api/ranks/season', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.put('/api/ranks/season', requireGuildId, (req, res, next) => {
     try {
+        const { guildId } = req.query
         getSeasonConfig(guildId) // ensure exists
         updateSeasonConfig(guildId, req.body)
         res.json({ success: true })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.get('/api/ranks/season/next', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.get('/api/ranks/season/next', requireGuildId, (req, res, next) => {
     try {
-        res.json({ nextEnd: getNextSeasonEnd(guildId) })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+        res.json({ nextEnd: getNextSeasonEnd(req.query.guildId) })
+    } catch (err) { next(err) }
 })
 
-app.get('/api/ranks/season/history', (req, res) => {
+app.get('/api/ranks/season/history', (req, res, next) => {
     const { guildId } = req.query
     if (!guildId) return res.json([])
     try {
         res.json(getSeasonHistory(guildId))
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/ranks/season/execute', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.post('/api/ranks/season/execute', requireGuildId, (req, res, next) => {
     try {
-        const result = checkAndExecuteSeason(guildId)
+        const result = checkAndExecuteSeason(req.query.guildId)
         res.json({ success: true, result })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // 管理者操作
-app.post('/api/ranks/adjust', (req, res) => {
-    const { guildId, userId, amount, source, description } = req.body
-    if (!guildId || !userId || amount === undefined) {
-        return res.status(400).json({ error: 'guildId, userId, amountが必要です' })
-    }
+app.post('/api/ranks/adjust', requireBody('guildId', 'userId'), (req, res, next) => {
     try {
+        const { guildId, userId, amount, source, description } = req.body
         const result = addRp(guildId, userId, amount, source || 'admin', description || '管理者による調整')
         res.json(result)
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
-app.post('/api/ranks/recalculate', (req, res) => {
-    const { guildId } = req.query
-    if (!guildId) return res.status(400).json({ error: 'guildIdが必要です' })
+app.post('/api/ranks/recalculate', requireGuildId, (req, res, next) => {
     try {
-        const count = recalculateAllRanks(guildId)
+        const count = recalculateAllRanks(req.query.guildId)
         res.json({ success: true, count })
-    } catch (err) {
-        res.status(500).json({ error: err.message })
-    }
+    } catch (err) { next(err) }
 })
 
 // ============================
@@ -894,6 +697,12 @@ if (process.env.NODE_ENV === 'production') {
         res.sendFile(join(__dirname, '..', 'dist', 'index.html'))
     })
 }
+
+// ============================
+// Error Handling
+// ============================
+app.use(notFoundHandler)
+app.use(globalErrorHandler)
 
 // ============================
 // Start server + auto-reconnect

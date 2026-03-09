@@ -12,9 +12,8 @@ const voiceJoinTimes = new Map()
  * @param {import('discord.js').Client} client - Discordクライアント
  * @param {object} dbHelpers - db.jsのエクスポート
  * @param {Function} getPointRules - ポイントルール取得関数
- * @param {object} db - SQLiteデータベースインスタンス
  */
-export function setupVoiceHandler(client, dbHelpers, getPointRules, db) {
+export function setupVoiceHandler(client, dbHelpers, getPointRules) {
     client.on(Events.VoiceStateUpdate, (oldState, newState) => {
         const userId = newState.member?.user?.id || oldState.member?.user?.id
         const guildId = newState.guild?.id || oldState.guild?.id
@@ -49,9 +48,7 @@ export function setupVoiceHandler(client, dbHelpers, getPointRules, db) {
                             )
                             const points = voiceRule.points * minutes
                             dbHelpers.addPoints(guildId, userId, points, 'earn', `ボイス参加 (${minutes}分)`)
-                            // ボイス参加時間を更新
-                            db.prepare('UPDATE member_points SET voice_minutes = voice_minutes + ? WHERE guild_id = ? AND user_id = ?')
-                                .run(minutes, guildId, userId)
+                            dbHelpers.addVoiceMinutes(guildId, userId, minutes)
                         } catch (err) {
                             console.error('Point earn error (voice):', err.message)
                         }

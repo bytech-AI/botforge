@@ -455,6 +455,17 @@ export function transferPoints(guildId, fromUserId, toUserId, amount, feePercent
   }
 }
 
+/**
+ * ボイスチャンネル参加時間を加算する
+ * @param {string} guildId - サーバーID
+ * @param {string} userId - ユーザーID
+ * @param {number} minutes - 加算する分数
+ */
+export function addVoiceMinutes(guildId, userId, minutes) {
+  db.prepare('UPDATE member_points SET voice_minutes = voice_minutes + ? WHERE guild_id = ? AND user_id = ?')
+    .run(minutes, guildId, userId)
+}
+
 export function getLeaderboard(guildId, limit = 50) {
   return db.prepare('SELECT *, RANK() OVER (ORDER BY total_points DESC) as rank FROM member_points WHERE guild_id = ? ORDER BY total_points DESC LIMIT ?').all(guildId, limit)
 }

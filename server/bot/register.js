@@ -66,9 +66,9 @@ export function getBuiltinCommands() {
 
 /**
  * ユーザー定義コマンドとビルトインコマンドをDiscordに登録する
- * @param {Array<object>} commands - ユーザー定義コマンドの配列
+ * @param {Array<{name: string, description?: string, enabled?: boolean, options?: Array<{name: string, type: string, description?: string, required?: boolean, choices?: string[]}>}>} commands - ユーザー定義コマンドの配列
  * @param {string} [guildId] - サーバーID（指定しなければグローバル登録）
- * @returns {Promise<object>} 登録結果
+ * @returns {Promise<{success: boolean, count: number}>} 登録結果
  */
 export async function registerSlashCommands(commands, guildId) {
     const client = getClient()

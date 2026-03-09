@@ -35,7 +35,7 @@ export function setupHandlers(commandsGetter, db) {
     // 各ハンドラーにdbHelpersを依存性注入
     setupMessageHandler(client, dbHelpers, getPointRules)
     setupReactionHandler(client, dbHelpers, getPointRules)
-    setupVoiceHandler(client, dbHelpers, getPointRules, db)
+    setupVoiceHandler(client, dbHelpers, getPointRules)
     setupInteractionHandler(client, commandsGetter, dbHelpers, getPointRules)
 
     console.log('📡 Command handlers set up (with point tracking)')

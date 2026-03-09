@@ -1,13 +1,9 @@
-import { useState, useContext } from 'react'
+import { useState, useContext, useEffect } from 'react'
 import { AppContext } from '../App'
 
 export default function AutoResponse() {
-    const { showToast } = useContext(AppContext)
-    const [responses, setResponses] = useState([
-        { id: 1, trigger: 'おはよう', matchType: 'contains', response: 'おはようございます！☀️ 今日も素敵な一日を！', channel: 'all', enabled: true },
-        { id: 2, trigger: 'gg', matchType: 'exact', response: 'ナイスゲーム！🎮', channel: 'all', enabled: true },
-        { id: 3, trigger: '(https?://\\S+)', matchType: 'regex', response: '🔗 リンクが共有されました！', channel: 'specific', enabled: false },
-    ])
+    const { showToast, selectedGuild } = useContext(AppContext)
+    const [responses, setResponses] = useState([])
     const [showModal, setShowModal] = useState(false)
     const [editing, setEditing] = useState(null)
     const [form, setForm] = useState({
@@ -15,6 +11,17 @@ export default function AutoResponse() {
     })
 
     const matchTypeLabels = { contains: '部分一致', exact: '完全一致', regex: '正規表現', startsWith: '先頭一致' }
+
+    // APIからデータ取得
+    useEffect(() => {
+        fetch(`/api/auto-responses?guildId=${selectedGuild || ''}`)
+            .then(r => r.json())
+            .then(data => setResponses(data.map(r => ({
+                id: r.id, trigger: r.trigger_text, matchType: r.match_type,
+                response: r.response, channel: r.channel_scope, enabled: r.enabled
+            }))))
+            .catch(() => { })
+    }, [selectedGuild])
 
     const openNew = () => {
         setForm({ trigger: '', matchType: 'contains', response: '', channel: 'all', enabled: true })
@@ -28,19 +35,59 @@ export default function AutoResponse() {
         setShowModal(true)
     }
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (!form.trigger.trim() || !form.response.trim()) {
             showToast('トリガーと応答を入力してください', 'error')
             return
         }
-        if (editing) {
-            setResponses(responses.map(r => r.id === editing ? { ...form, id: editing } : r))
-            showToast('自動応答を更新しました')
-        } else {
-            setResponses([...responses, { ...form, id: Date.now() }])
-            showToast('自動応答を追加しました')
+        try {
+            if (editing) {
+                await fetch(`/api/auto-responses/${editing}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(form)
+                })
+                setResponses(responses.map(r => r.id === editing ? { ...form, id: editing } : r))
+                showToast('自動応答を更新しました')
+            } else {
+                const res = await fetch('/api/auto-responses', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ...form, guildId: selectedGuild })
+                })
+                const created = await res.json()
+                setResponses([...responses, {
+                    id: created.id, trigger: created.trigger_text, matchType: created.match_type,
+                    response: created.response, channel: created.channel_scope, enabled: !!created.enabled
+                }])
+                showToast('自動応答を追加しました')
+            }
+        } catch {
+            showToast('保存に失敗しました', 'error')
         }
         setShowModal(false)
+    }
+
+    const handleToggle = async (r) => {
+        const updated = { ...r, enabled: !r.enabled }
+        try {
+            await fetch(`/api/auto-responses/${r.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(updated)
+            })
+            setResponses(responses.map(x => x.id === r.id ? updated : x))
+        } catch { }
+    }
+
+    const handleDelete = async (id) => {
+        try {
+            await fetch(`/api/auto-responses/${id}`, { method: 'DELETE' })
+            setResponses(responses.filter(x => x.id !== id))
+            showToast('削除しました')
+        } catch {
+            showToast('削除に失敗しました', 'error')
+        }
     }
 
     return (
@@ -84,14 +131,12 @@ export default function AutoResponse() {
                             <div className="flex-row gap-md">
                                 <label className="toggle">
                                     <input type="checkbox" checked={r.enabled}
-                                        onChange={() => setResponses(responses.map(x => x.id === r.id ? { ...x, enabled: !x.enabled } : x))} />
+                                        onChange={() => handleToggle(r)} />
                                     <span className="toggle-slider"></span>
                                 </label>
                                 <button className="btn-icon" onClick={() => openEdit(r)}>✏️</button>
-                                <button className="btn-icon" onClick={() => {
-                                    setResponses(responses.filter(x => x.id !== r.id))
-                                    showToast('削除しました')
-                                }} style={{ color: 'var(--accent-danger)' }}>🗑️</button>
+                                <button className="btn-icon" onClick={() => handleDelete(r.id)}
+                                    style={{ color: 'var(--accent-danger)' }}>🗑️</button>
                             </div>
                         </div>
                     </div>

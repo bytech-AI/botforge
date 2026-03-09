@@ -46,7 +46,18 @@ export function setupVoiceHandler(client, dbHelpers, getPointRules) {
                                 member.displayName || member.user.username,
                                 member.user.displayAvatarURL({ size: 32 })
                             )
-                            const points = voiceRule.points * minutes
+                            // RP付与（分数分）
+                            try {
+                                const rpRules = dbHelpers.getRpRules(guildId)
+                                const rpRule = rpRules.find(r => r.action === 'voice_join' && r.enabled)
+                                if (rpRule) {
+                                    dbHelpers.addRp(guildId, userId, rpRule.rp_amount * minutes, 'voice_join', `ボイス参加 (${minutes}分)`)
+                                }
+                            } catch { }
+                            // CP付与（ランク倍率適用）
+                            let multiplier = 1.0
+                            try { multiplier = dbHelpers.getCpMultiplier(guildId, userId) } catch { }
+                            const points = voiceRule.points * minutes * multiplier
                             dbHelpers.addPoints(guildId, userId, points, 'earn', `ボイス参加 (${minutes}分)`)
                             dbHelpers.addVoiceMinutes(guildId, userId, minutes)
                         } catch (err) {

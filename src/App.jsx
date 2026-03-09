@@ -11,6 +11,7 @@ import EmbedBuilder from './pages/EmbedBuilder'
 import PointSystem from './pages/PointSystem'
 import PointLeaderboard from './pages/PointLeaderboard'
 import Rewards from './pages/Rewards'
+import RankSystem from './pages/RankSystem'
 import { useState, useEffect, useRef, createContext } from 'react'
 
 export const AppContext = createContext()
@@ -92,6 +93,7 @@ function App() {
                             <Route path="/points" element={<PointSystem />} />
                             <Route path="/leaderboard" element={<PointLeaderboard />} />
                             <Route path="/rewards" element={<Rewards />} />
+                            <Route path="/ranks" element={<RankSystem />} />
                         </Routes>
                     </main>
                     {toast && (

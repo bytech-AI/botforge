@@ -60,7 +60,9 @@ The project uses a branch-based workflow with agent workflows defined in `.agent
 1. **Plan** — どちらかがIssueを起票（設計 or 改善提案どちらからでもOK）
 2. **Do** — 実装担当がブランチ→実装→PR作成
 3. **Check** — もう片方がレビュー。遠慮なくダメ出し・改善提案する
-4. **Act** — 修正→再レビュー→マージ→次の改善点を洗い出し
+4. **Merge** — 修正→再レビュー→マージ
+5. **動作確認** — Mac側で `git pull` → `npm run dev` → ブラウザで実際にアプリを触って確認
+6. **Act** — 問題なければ次のIssue着手。壊れていたら修正Issueを起票
 
 **相互レビューのルール：**
 - PRには必ず「ここが不安」「別案あれば教えて」などレビュー観点を書く

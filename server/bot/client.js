@@ -6,11 +6,12 @@ import { existsSync, readFileSync, writeFileSync, mkdirSync, unlinkSync } from '
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'crypto'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { hostname, userInfo } from 'os'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
-const tokenPath = join(__dirname, '..', '..', 'data', 'token.enc')
+const dataDir = join(__dirname, '..', '..', 'data')
+const tokenPath = join(dataDir, 'token.enc')
+const keyPath = join(dataDir, 'encryption.key')
 
 let client = null
 let botToken = null
@@ -18,18 +19,32 @@ let botToken = null
 // --- 暗号化ヘルパー ---
 
 /**
- * マシン固有情報から暗号化キーを導出する
+ * 暗号化キーを取得する（優先順位: 環境変数 → 永続化ファイル → 新規生成）
  * @returns {Buffer} 32バイトのAES-256用キー
  */
-function deriveKey() {
-  // カスタムキーが環境変数で指定されている場合はそちらを優先
+function getEncryptionKey() {
+  // 1. 環境変数が設定されていればSHA-256で32バイトに正規化
   const customKey = process.env.BOTFORGE_ENCRYPTION_KEY
   if (customKey) {
     return createHash('sha256').update(customKey).digest()
   }
-  // マシン固有情報から自動生成
-  const material = `botforge:${hostname()}:${userInfo().username}:token-key`
-  return createHash('sha256').update(material).digest()
+
+  // 2. 永続化された鍵ファイルがあれば読み込む
+  try {
+    if (existsSync(keyPath)) {
+      const key = readFileSync(keyPath)
+      if (key.length === 32) return key
+    }
+  } catch { }
+
+  // 3. 安全なランダムキーを生成し永続化
+  try {
+    mkdirSync(dataDir, { recursive: true })
+  } catch { }
+  const newKey = randomBytes(32)
+  writeFileSync(keyPath, newKey, { mode: 0o600 })
+  console.log('🔑 New encryption key generated and saved to data/encryption.key')
+  return newKey
 }
 
 /**
@@ -38,7 +53,7 @@ function deriveKey() {
  * @returns {string} Base64エンコードされた暗号文（iv:tag:ciphertext）
  */
 function encryptToken(token) {
-  const key = deriveKey()
+  const key = getEncryptionKey()
   const iv = randomBytes(12)
   const cipher = createCipheriv('aes-256-gcm', key, iv)
   const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()])
@@ -54,7 +69,7 @@ function encryptToken(token) {
  * @returns {string} 復号されたトークン
  */
 function decryptToken(encoded) {
-  const key = deriveKey()
+  const key = getEncryptionKey()
   const combined = Buffer.from(encoded, 'base64')
   const iv = combined.subarray(0, 12)
   const tag = combined.subarray(12, 28)

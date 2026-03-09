@@ -40,9 +40,9 @@ export default function PointLeaderboard() {
 
     const exportCSV = () => {
         if (members.length === 0) return
-        const header = '順位,ユーザー名,表示名,ポイント,レベル,メッセージ,リアクション,ボイス(分),連続日数\n'
+        const header = '順位,ユーザー名,表示名,ポイント,ランク,RP,メッセージ,リアクション,ボイス(分),連続日数\n'
         const rows = members.map((m, i) =>
-            `${i + 1},${m.username},${m.display_name || m.username},${m.total_points},${m.level},${m.messages},${m.reactions},${m.voice_minutes},${m.streak_days}`
+            `${i + 1},${m.username},${m.display_name || m.username},${m.total_points},${m.rank_label || '-'},${m.current_rp || 0},${m.messages},${m.reactions},${m.voice_minutes},${m.streak_days}`
         ).join('\n')
         const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' })
         const url = URL.createObjectURL(blob)
@@ -168,7 +168,7 @@ export default function PointLeaderboard() {
                                     <th style={{ width: '60px' }}>順位</th>
                                     <th>メンバー</th>
                                     <th style={{ textAlign: 'right' }}>ポイント</th>
-                                    <th style={{ textAlign: 'right' }}>レベル</th>
+                                    <th style={{ textAlign: 'right' }}>ランク</th>
                                     <th style={{ textAlign: 'right' }}>メッセージ</th>
                                     <th style={{ textAlign: 'right' }}>リアクション</th>
                                     <th style={{ textAlign: 'right' }}>ボイス</th>
@@ -218,7 +218,11 @@ export default function PointLeaderboard() {
                                                 {m.total_points.toLocaleString()}
                                             </td>
                                             <td style={{ textAlign: 'right' }}>
-                                                <span className="badge badge-accent">Lv.{m.level}</span>
+                                                <span className="badge" style={{
+                                                    background: m.rank_color ? `${m.rank_color}22` : undefined,
+                                                    color: m.rank_color || undefined,
+                                                    border: m.rank_color ? `1px solid ${m.rank_color}44` : undefined,
+                                                }}>{m.rank_icon} {m.rank_label || '-'}</span>
                                             </td>
                                             <td style={{ textAlign: 'right', color: 'var(--text-secondary)' }}>
                                                 {(m.messages || 0).toLocaleString()}

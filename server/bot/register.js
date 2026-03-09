@@ -61,6 +61,19 @@ export function getBuiltinCommands() {
             .setDescription('コインフリップでポイントを賭けます')
             .addNumberOption(opt => opt.setName('amount').setDescription('賭けるポイント').setRequired(true).setMinValue(1))
             .toJSON(),
+        new SlashCommandBuilder()
+            .setName('rank')
+            .setDescription('自分またはユーザーのランク詳細を表示します')
+            .addUserOption(opt => opt.setName('user').setDescription('確認するユーザー（省略で自分）').setRequired(false))
+            .toJSON(),
+        new SlashCommandBuilder()
+            .setName('rp-ranking')
+            .setDescription('RPランキングTOP10を表示します')
+            .toJSON(),
+        new SlashCommandBuilder()
+            .setName('season')
+            .setDescription('現在のシーズン情報を表示します')
+            .toJSON(),
     ]
 }
 

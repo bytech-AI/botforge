@@ -25,32 +25,36 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
                 targetUser.username, targetUser.displayAvatarURL({ size: 32 })
             )
             const rank = dbHelpers.getUserRank(guildId, targetUser.id)
-            const titleInfo = dbHelpers.getLevelTitle(member.level)
-            const nextLevelPts = dbHelpers.pointsForNextLevel(member.level)
-            const currentEarned = member.total_earned || 0
-            const prevLevelPts = dbHelpers.pointsForNextLevel(member.level - 1)
-            const progress = nextLevelPts > prevLevelPts
-                ? Math.min(100, Math.floor(((currentEarned - prevLevelPts) / (nextLevelPts - prevLevelPts)) * 100))
-                : 100
+            const rankInfo = dbHelpers.getMemberRank(guildId, targetUser.id)
+            const config = dbHelpers.getRankConfig(guildId)
+            const currentIdx = config.findIndex(r => r.rank_key === rankInfo.current_rank_key)
+            const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
 
-            const filled = Math.floor(progress / 10)
+            // RP進捗バー
+            const nextThreshold = nextRank ? nextRank.rp_threshold : rankInfo.rp_threshold
+            const prevThreshold = rankInfo.rp_threshold
+            const rpProgress = nextRank
+                ? Math.min(100, Math.floor(((rankInfo.current_rp - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
+                : 100
+            const filled = Math.floor(rpProgress / 10)
             const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
 
             const embed = new EmbedBuilder()
-                .setColor(parseInt(titleInfo.color.replace('#', ''), 16))
+                .setColor(parseInt((rankInfo.color || '#7c5cfc').replace('#', ''), 16))
                 .setTitle(`💰 ${targetUser.username} のウォレット`)
                 .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
-                .setDescription(`**${titleInfo.title}**`)
+                .setDescription(`**${rankInfo.icon} ${rankInfo.rank_label}** (倍率 ×${rankInfo.cp_multiplier})`)
                 .addFields(
+                    { name: '📊 RP', value: `**${rankInfo.current_rp.toLocaleString()}** / ${nextRank ? nextThreshold.toLocaleString() : '最大'} ${nextRank ? `(次: ${nextRank.rank_label})` : ''}`, inline: false },
+                    { name: '進捗', value: `${progressBar} ${rpProgress}%`, inline: false },
                     { name: '💎 ポイント残高', value: `**${Math.floor(member.total_points).toLocaleString()}** pt`, inline: true },
                     { name: '🏆 ランキング', value: `#${rank}`, inline: true },
-                    { name: '📊 レベル', value: `Lv.${member.level}`, inline: true },
-                    { name: `⬆️ 次のレベルまで`, value: `${progressBar} ${progress}%\n${Math.floor(currentEarned).toLocaleString()} / ${nextLevelPts.toLocaleString()} XP`, inline: false },
+                    { name: '🔥 連続ログイン', value: `${member.streak_days}日`, inline: true },
                     { name: '💬 メッセージ', value: `${member.messages.toLocaleString()}`, inline: true },
                     { name: '⭐ リアクション', value: `${member.reactions.toLocaleString()}`, inline: true },
-                    { name: '🔥 連続ログイン', value: `${member.streak_days}日`, inline: true },
+                    { name: '🎤 ボイス', value: `${member.voice_minutes.toLocaleString()}分`, inline: true },
                 )
-                .setFooter({ text: `累計獲得: ${Math.floor(currentEarned).toLocaleString()}pt | 最終: ${new Date(member.last_active).toLocaleDateString('ja-JP')}` })
+                .setFooter({ text: `累計獲得: ${Math.floor(member.total_earned || 0).toLocaleString()}pt | 最終: ${new Date(member.last_active).toLocaleDateString('ja-JP')}` })
 
             await interaction.reply({ embeds: [embed], ephemeral: true })
             break
@@ -106,9 +110,12 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
             lines.push('`/pay` — ポイント支払い')
             lines.push('`/daily` — デイリーボーナス')
             lines.push('`/ranking` — ランキング')
+            lines.push('`/rank` — ランク詳細')
+            lines.push('`/rp-ranking` — RPランキング')
+            lines.push('`/season` — シーズン情報')
             lines.push('`/history` — 取引履歴')
-            lines.push('`/gacha` — ガチャ（ポイント消費）')
-            lines.push('`/coinflip` — コインフリップ賭け')
+            lines.push('`/gacha` — ガチャ')
+            lines.push('`/coinflip` — コインフリップ')
 
             const embed = new EmbedBuilder()
                 .setColor(0x00d4aa)

@@ -20,8 +20,9 @@ const navItems = [
         ]
     },
     {
-        section: 'ポイントシステム', items: [
+        section: 'ポイント & ランク', items: [
             { path: '/points', icon: '⭐', label: 'ポイント設定' },
+            { path: '/ranks', icon: '🏅', label: 'ランクシステム' },
             { path: '/leaderboard', icon: '🏆', label: 'リーダーボード' },
             { path: '/rewards', icon: '🎁', label: '報酬・還元' },
         ]

@@ -31,10 +31,35 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
                 message.member?.displayName || message.author.username,
                 message.author.displayAvatarURL({ size: 32 }),
                 msgRule.points,
-                'メッセージ送信'
+                'メッセージ送信',
+                'message'
             )
         } catch (err) {
             console.error('Point earn error (message):', err.message)
+        }
+
+        // 自動応答の処理
+        try {
+            const autoResponses = dbHelpers.getAllAutoResponses(message.guild.id)
+            for (const ar of autoResponses) {
+                if (!ar.enabled) continue
+                let matched = false
+                const content = message.content
+                switch (ar.match_type) {
+                    case 'exact': matched = content === ar.trigger_text; break
+                    case 'contains': matched = content.includes(ar.trigger_text); break
+                    case 'startsWith': matched = content.startsWith(ar.trigger_text); break
+                    case 'regex':
+                        try { matched = new RegExp(ar.trigger_text, 'i').test(content) } catch { }
+                        break
+                }
+                if (matched) {
+                    message.channel.send(ar.response).catch(() => { })
+                    break
+                }
+            }
+        } catch (err) {
+            console.error('Auto response error:', err.message)
         }
     })
 }

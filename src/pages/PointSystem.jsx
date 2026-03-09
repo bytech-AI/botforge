@@ -46,12 +46,25 @@ export default function PointSystem() {
         fetch('/api/points/actions').then(r => r.json()).then(setActions).catch(() => { })
     }, [])
 
-    // Fetch economy settings when guild changes
+    // Fetch economy settings, channel multipliers, decay settings when guild changes
     useEffect(() => {
         if (selectedGuild) {
             fetch(`/api/points/economy?guildId=${selectedGuild}`)
                 .then(r => r.json())
                 .then(setEconomy)
+                .catch(() => { })
+            fetch(`/api/points/channel-multipliers?guildId=${selectedGuild}`)
+                .then(r => r.json())
+                .then(data => setChannelMultipliers(data.map(m => ({
+                    id: m.id, channelId: m.channel_id, channelName: m.channel_id, multiplier: m.multiplier
+                }))))
+                .catch(() => { })
+            fetch(`/api/points/decay-settings?guildId=${selectedGuild}`)
+                .then(r => r.json())
+                .then(data => {
+                    if (data.decay) setDecay(data.decay)
+                    if (data.expiry) setExpiry(data.expiry)
+                })
                 .catch(() => { })
         }
     }, [selectedGuild])
@@ -681,8 +694,26 @@ export default function PointSystem() {
             {activeTab !== 'economy' && activeTab !== 'actions' && (
                 <div style={{ marginTop: 'var(--spacing-xl)', display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn btn-primary btn-lg"
-                        onClick={() => {
-                            saveRules()
+                        onClick={async () => {
+                            await saveRules()
+                            if (selectedGuild) {
+                                // チャンネル倍率保存
+                                try {
+                                    await fetch(`/api/points/channel-multipliers?guildId=${selectedGuild}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ multipliers: channelMultipliers })
+                                    })
+                                } catch { }
+                                // 減衰・有効期限保存
+                                try {
+                                    await fetch(`/api/points/decay-settings?guildId=${selectedGuild}`, {
+                                        method: 'PUT',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ decay, expiry })
+                                    })
+                                } catch { }
+                            }
                             showToast('ポイント設定を保存しました')
                         }}>
                         💾 すべての設定を保存

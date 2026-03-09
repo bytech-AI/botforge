@@ -1,8 +1,8 @@
-import { useState, useContext } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import { AppContext } from '../App'
 
 export default function EmbedBuilder() {
-    const { showToast } = useContext(AppContext)
+    const { showToast, selectedGuild } = useContext(AppContext)
     const [embed, setEmbed] = useState({
         author: '',
         authorIcon: '',
@@ -20,6 +20,84 @@ export default function EmbedBuilder() {
             { name: '📍 場所', value: 'ボイスチャンネル #1', inline: true },
         ]
     })
+    const [templates, setTemplates] = useState([])
+
+    /**
+     * テンプレート一覧をAPIから取得する
+     */
+    const fetchTemplates = async () => {
+        if (!selectedGuild) return
+        try {
+            const res = await fetch(`/api/embed-templates?guildId=${selectedGuild}`)
+            if (res.ok) {
+                const data = await res.json()
+                setTemplates(data)
+            }
+        } catch (err) {
+            console.error('テンプレート取得エラー:', err)
+        }
+    }
+
+    useEffect(() => {
+        fetchTemplates()
+    }, [selectedGuild])
+
+    /**
+     * 現在のEmbedをテンプレートとして保存する
+     */
+    const saveTemplate = async () => {
+        if (!selectedGuild) {
+            showToast('サーバーを選択してください', 'error')
+            return
+        }
+        const name = prompt('テンプレート名を入力してください')
+        if (!name) return
+        try {
+            const res = await fetch('/api/embed-templates', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guildId: selectedGuild, name, embedData: embed })
+            })
+            if (res.ok) {
+                showToast('テンプレートを保存しました')
+                fetchTemplates()
+            } else {
+                showToast('テンプレートの保存に失敗しました', 'error')
+            }
+        } catch (err) {
+            console.error('テンプレート保存エラー:', err)
+            showToast('テンプレートの保存に失敗しました', 'error')
+        }
+    }
+
+    /**
+     * テンプレートを読み込んでEmbedに反映する
+     * @param {object} template - テンプレートオブジェクト
+     */
+    const loadTemplate = (template) => {
+        setEmbed(template.embedData)
+        showToast(`テンプレート「${template.name}」を読み込みました`)
+    }
+
+    /**
+     * テンプレートを削除する
+     * @param {number|string} id - テンプレートID
+     */
+    const deleteTemplate = async (id) => {
+        if (!confirm('このテンプレートを削除しますか？')) return
+        try {
+            const res = await fetch(`/api/embed-templates/${id}`, { method: 'DELETE' })
+            if (res.ok) {
+                showToast('テンプレートを削除しました')
+                fetchTemplates()
+            } else {
+                showToast('テンプレートの削除に失敗しました', 'error')
+            }
+        } catch (err) {
+            console.error('テンプレート削除エラー:', err)
+            showToast('テンプレートの削除に失敗しました', 'error')
+        }
+    }
 
     const addField = () => {
         setEmbed({ ...embed, fields: [...embed.fields, { name: '', value: '', inline: false }] })
@@ -160,6 +238,36 @@ export default function EmbedBuilder() {
 
                 {/* Preview */}
                 <div style={{ position: 'sticky', top: 'var(--spacing-xl)' }}>
+                    {/* テンプレート一覧 */}
+                    {templates.length > 0 && (
+                        <div className="card" style={{ marginBottom: 'var(--spacing-md)' }}>
+                            <div className="card-header"><h2>📁 保存済みテンプレート</h2></div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-sm)' }}>
+                                {templates.map(template => (
+                                    <div key={template.id} style={{
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        justifyContent: 'space-between',
+                                        padding: 'var(--spacing-sm) var(--spacing-md)',
+                                        background: 'var(--bg-glass)',
+                                        borderRadius: 'var(--radius-md)',
+                                        border: '1px solid var(--border-color)'
+                                    }}>
+                                        <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{template.name}</span>
+                                        <div className="flex-row" style={{ gap: 'var(--spacing-xs)' }}>
+                                            <button className="btn btn-primary btn-sm" onClick={() => loadTemplate(template)}>
+                                                読み込み
+                                            </button>
+                                            <button className="btn btn-secondary btn-sm" onClick={() => deleteTemplate(template.id)}>
+                                                削除
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="card">
                         <div className="card-header">
                             <h2>👁 プレビュー</h2>
@@ -237,7 +345,7 @@ export default function EmbedBuilder() {
 
                     <div style={{ marginTop: 'var(--spacing-md)' }}>
                         <button className="btn btn-primary btn-lg" style={{ width: '100%', justifyContent: 'center' }}
-                            onClick={() => showToast('Embedテンプレートを保存しました')}>
+                            onClick={saveTemplate}>
                             💾 テンプレートとして保存
                         </button>
                     </div>

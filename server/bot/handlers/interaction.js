@@ -6,7 +6,7 @@ import { Events, PermissionFlagsBits, EmbedBuilder } from 'discord.js'
 import { handleBalance } from '../commands/balance.js'
 import { handleEconomy } from '../commands/economy.js'
 import { handleGacha } from '../commands/gacha.js'
-import { handleRanking } from '../commands/ranking.js'
+import { handleRanking, handleRank, handleRpRanking, handleSeason } from '../commands/ranking.js'
 
 // ビルトインコマンドのMap: コマンド名 → ハンドラー関数
 const builtinCommands = new Map()
@@ -35,9 +35,15 @@ function initBuiltinCommands() {
     builtinCommands.set('coinflip', (interaction, dbHelpers) =>
         handleGacha(interaction, dbHelpers, 'coinflip'))
 
-    // ranking.js: ranking
+    // ranking.js: ranking, rank, rp-ranking, season
     builtinCommands.set('ranking', (interaction, dbHelpers) =>
         handleRanking(interaction, dbHelpers))
+    builtinCommands.set('rank', (interaction, dbHelpers) =>
+        handleRank(interaction, dbHelpers))
+    builtinCommands.set('rp-ranking', (interaction, dbHelpers) =>
+        handleRpRanking(interaction, dbHelpers))
+    builtinCommands.set('season', (interaction, dbHelpers) =>
+        handleSeason(interaction, dbHelpers))
 }
 
 // 初期化

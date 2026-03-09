@@ -1,8 +1,9 @@
-import { useState, useContext } from 'react'
+import { useState, useEffect, useContext } from 'react'
 import { AppContext } from '../App'
 
 export default function WelcomeMessages() {
-    const { showToast } = useContext(AppContext)
+    const { showToast, selectedGuild } = useContext(AppContext)
+    const [loading, setLoading] = useState(false)
     const [welcome, setWelcome] = useState({
         enabled: true,
         channelId: '',
@@ -22,6 +23,67 @@ export default function WelcomeMessages() {
         message: '👋 {username} さんがサーバーを去りました...',
     })
 
+    /**
+     * サーバー選択時にAPIから入退室メッセージ設定を取得する
+     */
+    useEffect(() => {
+        if (!selectedGuild) return
+        setLoading(true)
+        fetch(`/api/welcome-settings?guildId=${selectedGuild}`)
+            .then(res => {
+                if (!res.ok) throw new Error('設定の取得に失敗しました')
+                return res.json()
+            })
+            .then(data => {
+                if (data.welcome) setWelcome(prev => ({ ...prev, ...data.welcome }))
+                if (data.leave) setLeave(prev => ({ ...prev, ...data.leave }))
+            })
+            .catch(err => {
+                console.error('入退室メッセージ設定の取得エラー:', err)
+            })
+            .finally(() => setLoading(false))
+    }, [selectedGuild])
+
+    /**
+     * 入退室メッセージ設定をAPIに保存する
+     * @param {'welcome' | 'leave'} type - 保存対象の種別
+     */
+    const handleSave = async (type) => {
+        if (!selectedGuild) {
+            showToast('サーバーを選択してください', 'error')
+            return
+        }
+        try {
+            const res = await fetch(`/api/welcome-settings?guildId=${selectedGuild}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ welcome, leave }),
+            })
+            if (!res.ok) throw new Error('保存に失敗しました')
+            showToast(type === 'welcome' ? '参加メッセージを保存しました' : '退出メッセージを保存しました')
+        } catch (err) {
+            console.error('保存エラー:', err)
+            showToast('保存に失敗しました', 'error')
+        }
+    }
+
+    // サーバー未選択時の表示
+    if (!selectedGuild) {
+        return (
+            <div className="animate-in">
+                <div className="page-header">
+                    <h1>👋 入退室メッセージ</h1>
+                    <p>メンバーの参加・退出時に自動で送信されるメッセージを設定します</p>
+                </div>
+                <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '1rem' }}>
+                        サーバーを選択してください
+                    </p>
+                </div>
+            </div>
+        )
+    }
+
     const variables = [
         { var: '{user}', desc: 'メンション' },
         { var: '{username}', desc: 'ユーザー名' },
@@ -35,6 +97,8 @@ export default function WelcomeMessages() {
                 <h1>👋 入退室メッセージ</h1>
                 <p>メンバーの参加・退出時に自動で送信されるメッセージを設定します</p>
             </div>
+
+            {loading && <p style={{ color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>読み込み中...</p>}
 
             <div className="grid-2" style={{ gap: 'var(--spacing-xl)' }}>
                 {/* Welcome */}
@@ -135,7 +199,7 @@ export default function WelcomeMessages() {
                     )}
 
                     <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', marginTop: 'var(--spacing-md)' }}
-                        onClick={() => showToast('参加メッセージを保存しました')}>
+                        onClick={() => handleSave('welcome')}>
                         💾 保存
                     </button>
                 </div>
@@ -166,7 +230,7 @@ export default function WelcomeMessages() {
                         </div>
 
                         <button className="btn btn-primary" style={{ width: '100%', justifyContent: 'center' }}
-                            onClick={() => showToast('退出メッセージを保存しました')}>
+                            onClick={() => handleSave('leave')}>
                             💾 保存
                         </button>
                     </div>

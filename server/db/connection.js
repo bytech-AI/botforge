@@ -351,6 +351,22 @@ export function initDatabase() {
     try { db.exec(sql) } catch { /* column already exists */ }
   }
 
+  // RPシステム移行パッチ: 旧累積RPのクリーンアップ
+  // 旧システムの累積RP（数百〜数万）が残っていると、addRp()のwhileループで
+  // 連鎖昇格が爆発してXランクまで一気に飛んでしまうため、
+  // 通常ランク（Xランク以外）でRP>=100のユーザーを0にリセットする
+  // ※新システムでは通常ランクのRPは0-99なので、>=100は旧データと判定でき冪等
+  try {
+    const cleaned = db.prepare(
+      "UPDATE member_ranks SET current_rp = 0 WHERE current_rank_key != 'x' AND current_rp >= 100"
+    ).run()
+    if (cleaned.changes > 0) {
+      console.log(`[RPマイグレーション] ${cleaned.changes}件の旧累積RPをリセットしました`)
+    }
+  } catch (err) {
+    console.error('[RPマイグレーション] クリーンアップエラー:', err.message)
+  }
+
   // Seed default gacha settings if empty
   const gachaCount = db.prepare('SELECT COUNT(*) as count FROM gacha_settings').get()
   if (gachaCount.count === 0) {

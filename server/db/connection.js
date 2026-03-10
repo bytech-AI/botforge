@@ -245,7 +245,10 @@ export function initDatabase() {
       rank_key TEXT NOT NULL,
       rank_label TEXT NOT NULL,
       rank_order INTEGER NOT NULL,
-      rp_threshold INTEGER NOT NULL,
+      promotion_threshold INTEGER DEFAULT 99,
+      is_special INTEGER DEFAULT 0,
+      entry_rp INTEGER DEFAULT 0,
+      demotion_threshold INTEGER DEFAULT NULL,
       cp_multiplier REAL NOT NULL,
       color TEXT DEFAULT '#808080',
       icon TEXT DEFAULT '⭐',
@@ -338,6 +341,11 @@ export function initDatabase() {
     'ALTER TABLE commands ADD COLUMN point_reward_max REAL DEFAULT 0',
     "ALTER TABLE auto_responses ADD COLUMN guild_id TEXT NOT NULL DEFAULT '__global__'",
     'ALTER TABLE auto_responses ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP',
+    // RPシステム新設計: ランク内相対RPへの移行
+    'ALTER TABLE rank_config ADD COLUMN promotion_threshold INTEGER DEFAULT 99',
+    'ALTER TABLE rank_config ADD COLUMN is_special INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN entry_rp INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN demotion_threshold INTEGER DEFAULT NULL',
   ]
   for (const sql of migrations) {
     try { db.exec(sql) } catch { /* column already exists */ }

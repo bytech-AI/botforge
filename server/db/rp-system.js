@@ -3,22 +3,24 @@ import { getDb } from './connection.js'
 // ============================
 // RP (Rank Point) System
 // ============================
+// 新設計: RPはランク内相対値（0〜promotion_threshold）
+// 昇格時にRPリセット、降格なし（Xランク除く）
 
 /** ランク設定のデフォルトシード */
 const DEFAULT_RANK_CONFIG = [
-  { rank_key: 'c_minus', rank_label: 'C-', rank_order: 0, rp_threshold: 0, cp_multiplier: 0.3, color: '#808080', icon: '🌱' },
-  { rank_key: 'c', rank_label: 'C', rank_order: 1, rp_threshold: 500, cp_multiplier: 0.4, color: '#8B8B8B', icon: '🌿' },
-  { rank_key: 'c_plus', rank_label: 'C+', rank_order: 2, rp_threshold: 1200, cp_multiplier: 0.5, color: '#969696', icon: '🍀' },
-  { rank_key: 'b_minus', rank_label: 'B-', rank_order: 3, rp_threshold: 2500, cp_multiplier: 0.6, color: '#4A9BD9', icon: '🔵' },
-  { rank_key: 'b', rank_label: 'B', rank_order: 4, rp_threshold: 4000, cp_multiplier: 0.8, color: '#3D8BC9', icon: '💎' },
-  { rank_key: 'b_plus', rank_label: 'B+', rank_order: 5, rp_threshold: 6000, cp_multiplier: 1.0, color: '#2E7AB8', icon: '💠' },
-  { rank_key: 'a_minus', rank_label: 'A-', rank_order: 6, rp_threshold: 9000, cp_multiplier: 1.2, color: '#9B59B6', icon: '🔮' },
-  { rank_key: 'a', rank_label: 'A', rank_order: 7, rp_threshold: 13000, cp_multiplier: 1.4, color: '#8E44AD', icon: '⚡' },
-  { rank_key: 'a_plus', rank_label: 'A+', rank_order: 8, rp_threshold: 18000, cp_multiplier: 1.6, color: '#7D3C98', icon: '🌟' },
-  { rank_key: 's_minus', rank_label: 'S-', rank_order: 9, rp_threshold: 25000, cp_multiplier: 1.8, color: '#F39C12', icon: '🏅' },
-  { rank_key: 's', rank_label: 'S', rank_order: 10, rp_threshold: 33000, cp_multiplier: 1.9, color: '#E67E22', icon: '👑' },
-  { rank_key: 's_plus', rank_label: 'S+', rank_order: 11, rp_threshold: 42000, cp_multiplier: 2.0, color: '#E74C3C', icon: '🐉' },
-  { rank_key: 'x', rank_label: 'X', rank_order: 12, rp_threshold: 60000, cp_multiplier: 2.5, color: '#FF0000', icon: '✦' },
+  { rank_key: 'c_minus', rank_label: 'C-', rank_order: 0, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 0.3, color: '#808080', icon: '🌱' },
+  { rank_key: 'c', rank_label: 'C', rank_order: 1, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 0.4, color: '#8B8B8B', icon: '🌿' },
+  { rank_key: 'c_plus', rank_label: 'C+', rank_order: 2, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 0.5, color: '#969696', icon: '🍀' },
+  { rank_key: 'b_minus', rank_label: 'B-', rank_order: 3, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 0.6, color: '#4A9BD9', icon: '🔵' },
+  { rank_key: 'b', rank_label: 'B', rank_order: 4, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 0.8, color: '#3D8BC9', icon: '💎' },
+  { rank_key: 'b_plus', rank_label: 'B+', rank_order: 5, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.0, color: '#2E7AB8', icon: '💠' },
+  { rank_key: 'a_minus', rank_label: 'A-', rank_order: 6, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.2, color: '#9B59B6', icon: '🔮' },
+  { rank_key: 'a', rank_label: 'A', rank_order: 7, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.4, color: '#8E44AD', icon: '⚡' },
+  { rank_key: 'a_plus', rank_label: 'A+', rank_order: 8, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.6, color: '#7D3C98', icon: '🌟' },
+  { rank_key: 's_minus', rank_label: 'S-', rank_order: 9, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.8, color: '#F39C12', icon: '🏅' },
+  { rank_key: 's', rank_label: 'S', rank_order: 10, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 1.9, color: '#E67E22', icon: '👑' },
+  { rank_key: 's_plus', rank_label: 'S+', rank_order: 11, promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null, cp_multiplier: 2.0, color: '#E74C3C', icon: '🐉' },
+  { rank_key: 'x', rank_label: 'X', rank_order: 12, promotion_threshold: null, is_special: 1, entry_rp: 1000, demotion_threshold: 0, cp_multiplier: 2.5, color: '#FF0000', icon: '✦' },
 ]
 
 /** RPルールのデフォルトシード */
@@ -49,14 +51,19 @@ const DEFAULT_BONUS_DISTRIBUTION = {
 
 // --- ランク設定 ---
 
+/**
+ * ギルドのランク設定を取得する（なければデフォルトをシードする）
+ * @param {string} guildId - ギルドID
+ * @returns {Array} ランク設定の配列（rank_order昇順）
+ */
 export function getRankConfig(guildId) {
   const db = getDb()
   let rows = db.prepare('SELECT * FROM rank_config WHERE guild_id = ? ORDER BY rank_order ASC').all(guildId)
   if (rows.length === 0) {
-    const stmt = db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, rp_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    const stmt = db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, promotion_threshold, is_special, entry_rp, demotion_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     const tx = db.transaction(() => {
       for (const r of DEFAULT_RANK_CONFIG) {
-        stmt.run(guildId, r.rank_key, r.rank_label, r.rank_order, r.rp_threshold, r.cp_multiplier, r.color, r.icon)
+        stmt.run(guildId, r.rank_key, r.rank_label, r.rank_order, r.promotion_threshold, r.is_special, r.entry_rp, r.demotion_threshold, r.cp_multiplier, r.color, r.icon)
       }
     })
     tx()
@@ -65,25 +72,40 @@ export function getRankConfig(guildId) {
   return rows
 }
 
+/**
+ * ギルドのランク設定を全置換する
+ * @param {string} guildId - ギルドID
+ * @param {Array} ranks - 新しいランク設定の配列
+ */
 export function updateRankConfig(guildId, ranks) {
   const db = getDb()
   const del = db.prepare('DELETE FROM rank_config WHERE guild_id = ?')
-  const ins = db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, rp_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+  const ins = db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, promotion_threshold, is_special, entry_rp, demotion_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
   const tx = db.transaction(() => {
     del.run(guildId)
     for (const r of ranks) {
-      ins.run(guildId, r.rank_key, r.rank_label, r.rank_order, r.rp_threshold, r.cp_multiplier, r.color || '#808080', r.icon || '⭐')
+      ins.run(guildId, r.rank_key, r.rank_label, r.rank_order, r.promotion_threshold ?? 99, r.is_special ?? 0, r.entry_rp ?? 0, r.demotion_threshold ?? null, r.cp_multiplier, r.color || '#808080', r.icon || '⭐')
     }
   })
   tx()
 }
 
+/**
+ * ランク階層を1つ追加する
+ * @param {string} guildId - ギルドID
+ * @param {Object} data - ランク設定データ
+ */
 export function addRankTier(guildId, data) {
   const db = getDb()
-  db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, rp_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .run(guildId, data.rank_key, data.rank_label, data.rank_order, data.rp_threshold, data.cp_multiplier, data.color || '#808080', data.icon || '⭐')
+  db.prepare('INSERT INTO rank_config (guild_id, rank_key, rank_label, rank_order, promotion_threshold, is_special, entry_rp, demotion_threshold, cp_multiplier, color, icon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .run(guildId, data.rank_key, data.rank_label, data.rank_order, data.promotion_threshold ?? 99, data.is_special ?? 0, data.entry_rp ?? 0, data.demotion_threshold ?? null, data.cp_multiplier, data.color || '#808080', data.icon || '⭐')
 }
 
+/**
+ * ランク階層を1つ削除する
+ * @param {string} guildId - ギルドID
+ * @param {string} rankKey - 削除するランクキー
+ */
 export function removeRankTier(guildId, rankKey) {
   const db = getDb()
   db.prepare('DELETE FROM rank_config WHERE guild_id = ? AND rank_key = ?').run(guildId, rankKey)
@@ -91,6 +113,11 @@ export function removeRankTier(guildId, rankKey) {
 
 // --- 減衰設定 ---
 
+/**
+ * ギルドの減衰設定を取得する（なければデフォルトを作成）
+ * @param {string} guildId - ギルドID
+ * @returns {Object} 減衰設定
+ */
 export function getRankSettings(guildId) {
   const db = getDb()
   let settings = db.prepare('SELECT * FROM rank_settings WHERE guild_id = ?').get(guildId)
@@ -101,6 +128,11 @@ export function getRankSettings(guildId) {
   return settings
 }
 
+/**
+ * ギルドの減衰設定を更新する
+ * @param {string} guildId - ギルドID
+ * @param {Object} s - 減衰設定データ
+ */
 export function updateRankSettings(guildId, s) {
   const db = getDb()
   db.prepare('UPDATE rank_settings SET decay_rate = ?, decay_grace_days = ?, decay_floor = ? WHERE guild_id = ?')
@@ -109,6 +141,11 @@ export function updateRankSettings(guildId, s) {
 
 // --- RPルール ---
 
+/**
+ * ギルドのRPルールを取得する（なければデフォルトをシードする）
+ * @param {string} guildId - ギルドID
+ * @returns {Array} RPルールの配列
+ */
 export function getRpRules(guildId) {
   const db = getDb()
   let rows = db.prepare('SELECT * FROM rp_rules WHERE guild_id = ? ORDER BY id ASC').all(guildId)
@@ -125,6 +162,11 @@ export function getRpRules(guildId) {
   return rows.map(r => ({ ...r, enabled: !!r.enabled }))
 }
 
+/**
+ * ギルドのRPルールを一括更新する
+ * @param {string} guildId - ギルドID
+ * @param {Array} rules - ルール配列
+ */
 export function updateRpRules(guildId, rules) {
   const db = getDb()
   const stmt = db.prepare('UPDATE rp_rules SET rp_amount = ?, cooldown = ?, enabled = ? WHERE guild_id = ? AND action = ?')
@@ -133,13 +175,58 @@ export function updateRpRules(guildId, rules) {
   }
 }
 
-// --- ランク判定 ---
+/**
+ * RPルールを1つ追加する
+ * @param {string} guildId - ギルドID
+ * @param {Object} data - ルールデータ（action, label, icon, rp_amount, cooldown, enabled）
+ * @returns {Object} 作成されたルール
+ */
+export function createRpRule(guildId, data) {
+  const db = getDb()
+  const result = db.prepare('INSERT INTO rp_rules (guild_id, action, label, icon, rp_amount, cooldown, enabled) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(guildId, data.action, data.label, data.icon || '⭐', data.rp_amount || 10, data.cooldown || 0, data.enabled !== false ? 1 : 0)
+  return db.prepare('SELECT * FROM rp_rules WHERE id = ?').get(result.lastInsertRowid)
+}
 
+/**
+ * RPルールを1つ削除する
+ * @param {string} guildId - ギルドID
+ * @param {number} ruleId - 削除するルールID
+ */
+export function deleteRpRule(guildId, ruleId) {
+  const db = getDb()
+  db.prepare('DELETE FROM rp_rules WHERE id = ? AND guild_id = ?').run(ruleId, guildId)
+}
+
+// --- ランク情報取得 ---
+
+/**
+ * rank_keyからランク設定情報を取得する
+ * @param {string} guildId - ギルドID
+ * @param {string} rankKey - ランクキー
+ * @returns {Object} ランク設定情報
+ */
+export function getRankInfo(guildId, rankKey) {
+  const config = getRankConfig(guildId)
+  return config.find(r => r.rank_key === rankKey) || config[0]
+}
+
+/**
+ * 累積RPからランクを判定する（後方互換用）
+ * 新設計ではランクは直接管理されるため、この関数はgetRankInfoのラッパー
+ * @param {string} guildId - ギルドID
+ * @param {number} currentRp - 現在のRP（新設計では使用しない）
+ * @returns {Object} ランク設定情報
+ * @deprecated getRankInfoを使用してください
+ */
 export function determineRank(guildId, currentRp) {
+  // 後方互換: 旧コードがcurrentRpで呼ぶケースに対応
+  // 新設計ではrank_keyベースで管理するため、この関数は最小限の互換レイヤー
   const config = getRankConfig(guildId)
   let matched = config[0]
   for (const rank of config) {
-    if (currentRp >= rank.rp_threshold) {
+    // 旧rp_thresholdカラムがある場合のフォールバック
+    if (rank.rp_threshold !== undefined && currentRp >= rank.rp_threshold) {
       matched = rank
     }
   }
@@ -148,6 +235,12 @@ export function determineRank(guildId, currentRp) {
 
 // --- メンバーランク ---
 
+/**
+ * メンバーのランク情報を取得する（なければ作成）
+ * @param {string} guildId - ギルドID
+ * @param {string} userId - ユーザーID
+ * @returns {Object} メンバーランク情報（promotion_threshold, is_special等を含む）
+ */
 export function getMemberRank(guildId, userId) {
   const db = getDb()
   let row = db.prepare('SELECT * FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
@@ -155,7 +248,7 @@ export function getMemberRank(guildId, userId) {
     db.prepare('INSERT INTO member_ranks (guild_id, user_id) VALUES (?, ?)').run(guildId, userId)
     row = db.prepare('SELECT * FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
   }
-  const rankInfo = determineRank(guildId, row.current_rp)
+  const rankInfo = getRankInfo(guildId, row.current_rank_key)
   return {
     ...row,
     decay_exempt: !!row.decay_exempt,
@@ -164,12 +257,29 @@ export function getMemberRank(guildId, userId) {
     color: rankInfo.color,
     icon: rankInfo.icon,
     rank_order: rankInfo.rank_order,
-    rp_threshold: rankInfo.rp_threshold,
+    promotion_threshold: rankInfo.promotion_threshold,
+    is_special: !!rankInfo.is_special,
+    entry_rp: rankInfo.entry_rp,
+    demotion_threshold: rankInfo.demotion_threshold,
   }
 }
 
 // --- RP付与 ---
 
+/**
+ * RPを付与し、昇格/降格ロジックを適用する
+ *
+ * 通常ランク: RP >= promotion_threshold で次ランクへ昇格、RPリセット（オーバーフロー繰越、連鎖対応）
+ *             RP < 0 の場合は0で止まる（降格なし）
+ * Xランク:   上限なし。RP < demotion_threshold で前ランクに降格（RPは前ランクのpromotion_threshold - 1）
+ *
+ * @param {string} guildId - ギルドID
+ * @param {string} userId - ユーザーID
+ * @param {number} amount - 付与するRP（負の値で減算）
+ * @param {string} source - RP獲得元（例: 'message', 'admin'）
+ * @param {string} description - 説明テキスト
+ * @returns {Object} 結果（rp_added, current_rp, rank_key, rank_label, cp_multiplier, rank_changed, previous_rank_key）
+ */
 export function addRp(guildId, userId, amount, source, description = '') {
   const db = getDb()
   // メンバーランクの初期化（なければ作成）
@@ -177,16 +287,51 @@ export function addRp(guildId, userId, amount, source, description = '') {
 
   const beforeRow = db.prepare('SELECT current_rp, current_rank_key FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
   const previousRankKey = beforeRow.current_rank_key
+  const config = getRankConfig(guildId)
 
-  // RP加算
-  db.prepare('UPDATE member_ranks SET current_rp = MAX(0, current_rp + ?), last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
-    .run(amount, guildId, userId)
+  let currentRp = beforeRow.current_rp + amount
+  let currentRankKey = beforeRow.current_rank_key
+  let currentRankConfig = config.find(r => r.rank_key === currentRankKey)
 
-  // ランク再判定
-  const updated = db.prepare('SELECT current_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
-  const newRank = determineRank(guildId, updated.current_rp)
-  db.prepare('UPDATE member_ranks SET current_rank_key = ? WHERE guild_id = ? AND user_id = ?')
-    .run(newRank.rank_key, guildId, userId)
+  if (currentRankConfig.is_special) {
+    // Xランク: 降格チェック
+    if (currentRankConfig.demotion_threshold !== null && currentRp < currentRankConfig.demotion_threshold) {
+      const prevRank = config.find(r => r.rank_order === currentRankConfig.rank_order - 1)
+      if (prevRank) {
+        currentRankKey = prevRank.rank_key
+        currentRp = (prevRank.promotion_threshold || 99) - 1
+        currentRankConfig = prevRank
+      }
+    }
+    // Xランクは上限なし、0未満にはならない（降格後は上のブロックで処理済み）
+    if (currentRp < 0) currentRp = 0
+  } else {
+    // 通常ランク: 昇格チェック（連鎖対応）
+    while (currentRankConfig.promotion_threshold !== null && currentRp >= currentRankConfig.promotion_threshold) {
+      const nextRank = config.find(r => r.rank_order === currentRankConfig.rank_order + 1)
+      if (!nextRank) break
+
+      if (nextRank.is_special) {
+        // Xランクへの昇格: entry_rpに設定
+        currentRp = nextRank.entry_rp || 1000
+        currentRankKey = nextRank.rank_key
+        currentRankConfig = nextRank
+        break
+      } else {
+        // 通常ランク昇格: オーバーフロー分を繰越
+        const overflow = currentRp - currentRankConfig.promotion_threshold
+        currentRp = overflow
+        currentRankKey = nextRank.rank_key
+        currentRankConfig = nextRank
+      }
+    }
+    // 通常ランクは0下限（降格なし）
+    if (currentRp < 0) currentRp = 0
+  }
+
+  // DB更新
+  db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+    .run(currentRp, currentRankKey, guildId, userId)
 
   // トランザクション記録
   db.prepare('INSERT INTO rp_transactions (guild_id, user_id, amount, source, description) VALUES (?, ?, ?, ?, ?)')
@@ -194,30 +339,44 @@ export function addRp(guildId, userId, amount, source, description = '') {
 
   return {
     rp_added: amount,
-    current_rp: updated.current_rp,
-    rank_key: newRank.rank_key,
-    rank_label: newRank.rank_label,
-    cp_multiplier: newRank.cp_multiplier,
-    rank_changed: newRank.rank_key !== previousRankKey,
+    current_rp: currentRp,
+    rank_key: currentRankKey,
+    rank_label: currentRankConfig.rank_label,
+    cp_multiplier: currentRankConfig.cp_multiplier,
+    rank_changed: currentRankKey !== previousRankKey,
     previous_rank_key: previousRankKey,
   }
 }
 
 // --- CP倍率取得 ---
 
+/**
+ * メンバーのCP倍率を取得する
+ * @param {string} guildId - ギルドID
+ * @param {string} userId - ユーザーID
+ * @returns {number} CP倍率
+ */
 export function getCpMultiplier(guildId, userId) {
   const db = getDb()
   const row = db.prepare('SELECT current_rank_key FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
   if (!row) return 1.0
-  const rankInfo = determineRank(guildId, db.prepare('SELECT current_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)?.current_rp || 0)
+  const rankInfo = getRankInfo(guildId, row.current_rank_key)
   return rankInfo.cp_multiplier
 }
 
 // --- 減衰処理 ---
 
+/**
+ * ギルド全体のRP減衰を適用する
+ * 通常ランク: RPが0未満にならない（0下限）
+ * Xランク: RP < demotion_threshold で前ランクに降格
+ * @param {string} guildId - ギルドID
+ * @returns {number} 減衰が適用されたメンバー数
+ */
 export function applyDecay(guildId) {
   const db = getDb()
   const settings = getRankSettings(guildId)
+  const config = getRankConfig(guildId)
   const graceDate = new Date()
   graceDate.setDate(graceDate.getDate() - settings.decay_grace_days)
   const graceDateStr = graceDate.toISOString().split('T')[0]
@@ -229,7 +388,7 @@ export function applyDecay(guildId) {
 
   // 減衰対象のメンバーを取得（非免除 & 猶予期間超過）
   const members = db.prepare(`
-    SELECT mr.user_id, mr.current_rp FROM member_ranks mr
+    SELECT mr.user_id, mr.current_rp, mr.current_rank_key FROM member_ranks mr
     LEFT JOIN member_points mp ON mr.guild_id = mp.guild_id AND mr.user_id = mp.user_id
     WHERE mr.guild_id = ? AND mr.decay_exempt = 0
     AND (mp.last_active IS NULL OR DATE(mp.last_active) < ?)
@@ -239,10 +398,31 @@ export function applyDecay(guildId) {
 
   let decayedCount = 0
   for (const m of members) {
-    const newRp = Math.max(Math.floor(m.current_rp * (1 - settings.decay_rate)), settings.decay_floor)
-    if (newRp !== m.current_rp) {
-      const rank = determineRank(guildId, newRp)
-      updateStmt.run(newRp, rank.rank_key, guildId, m.user_id)
+    let newRp = Math.floor(m.current_rp * (1 - settings.decay_rate))
+    let newRankKey = m.current_rank_key
+    const rankInfo = config.find(r => r.rank_key === m.current_rank_key) || config[0]
+
+    if (rankInfo.is_special) {
+      // Xランク: 降格チェック
+      if (rankInfo.demotion_threshold !== null && newRp < rankInfo.demotion_threshold) {
+        const prevRank = config.find(r => r.rank_order === rankInfo.rank_order - 1)
+        if (prevRank) {
+          newRankKey = prevRank.rank_key
+          newRp = (prevRank.promotion_threshold || 99) - 1
+        } else {
+          newRp = 0
+        }
+      } else if (newRp < 0) {
+        newRp = 0
+      }
+    } else {
+      // 通常ランク: 0下限、降格なし
+      newRp = Math.max(newRp, settings.decay_floor)
+      if (newRp < 0) newRp = 0
+    }
+
+    if (newRp !== m.current_rp || newRankKey !== m.current_rank_key) {
+      updateStmt.run(newRp, newRankKey, guildId, m.user_id)
       decayedCount++
     }
   }
@@ -251,6 +431,13 @@ export function applyDecay(guildId) {
 
 // --- 減衰免除 ---
 
+/**
+ * メンバーの減衰免除設定を変更する
+ * @param {string} guildId - ギルドID
+ * @param {string} userId - ユーザーID
+ * @param {boolean} exempt - 免除するかどうか
+ * @param {string|null} exemptUntil - 免除期限（nullなら無期限）
+ */
 export function setDecayExempt(guildId, userId, exempt, exemptUntil = null) {
   const db = getDb()
   getMemberRank(guildId, userId)
@@ -258,6 +445,11 @@ export function setDecayExempt(guildId, userId, exempt, exemptUntil = null) {
     .run(exempt ? 1 : 0, exemptUntil, guildId, userId)
 }
 
+/**
+ * 減衰免除中のメンバー一覧を取得する
+ * @param {string} guildId - ギルドID
+ * @returns {Array} 免除中メンバーの配列
+ */
 export function getDecayExemptMembers(guildId) {
   const db = getDb()
   return db.prepare('SELECT * FROM member_ranks WHERE guild_id = ? AND decay_exempt = 1').all(guildId)
@@ -266,20 +458,35 @@ export function getDecayExemptMembers(guildId) {
 
 // --- RPランキング ---
 
+/**
+ * RPリーダーボードを取得する（ランク順 > ランク内RP順）
+ * @param {string} guildId - ギルドID
+ * @param {number} limit - 取得件数
+ * @returns {Array} ランキング配列
+ */
 export function getRpLeaderboard(guildId, limit = 50) {
   const db = getDb()
   return db.prepare(`
     SELECT mr.*, mp.username, mp.display_name, mp.avatar, mp.total_points, mp.messages, mp.reactions, mp.voice_minutes, mp.streak_days,
-      RANK() OVER (ORDER BY mr.current_rp DESC) as rank
+      rc.rank_order,
+      RANK() OVER (ORDER BY rc.rank_order DESC, mr.current_rp DESC) as rank
     FROM member_ranks mr
     LEFT JOIN member_points mp ON mr.guild_id = mp.guild_id AND mr.user_id = mp.user_id
+    LEFT JOIN rank_config rc ON mr.guild_id = rc.guild_id AND mr.current_rank_key = rc.rank_key
     WHERE mr.guild_id = ?
-    ORDER BY mr.current_rp DESC LIMIT ?
+    ORDER BY rc.rank_order DESC, mr.current_rp DESC LIMIT ?
   `).all(guildId, limit)
 }
 
 // --- RP履歴 ---
 
+/**
+ * メンバーのRP履歴を取得する
+ * @param {string} guildId - ギルドID
+ * @param {string} userId - ユーザーID
+ * @param {number} limit - 取得件数
+ * @returns {Array} RP履歴の配列
+ */
 export function getRpHistory(guildId, userId, limit = 20) {
   const db = getDb()
   return db.prepare('SELECT * FROM rp_transactions WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT ?')
@@ -288,6 +495,11 @@ export function getRpHistory(guildId, userId, limit = 20) {
 
 // --- シーズン設定 ---
 
+/**
+ * ギルドのシーズン設定を取得する（なければデフォルトを作成）
+ * @param {string} guildId - ギルドID
+ * @returns {Object} シーズン設定
+ */
 export function getSeasonConfig(guildId) {
   const db = getDb()
   let config = db.prepare('SELECT * FROM season_config WHERE guild_id = ?').get(guildId)
@@ -303,6 +515,11 @@ export function getSeasonConfig(guildId) {
   }
 }
 
+/**
+ * ギルドのシーズン設定を更新する
+ * @param {string} guildId - ギルドID
+ * @param {Object} data - シーズン設定データ
+ */
 export function updateSeasonConfig(guildId, data) {
   const db = getDb()
   db.prepare(`UPDATE season_config SET enabled = ?, cycle_type = ?, cycle_value = ?,
@@ -314,6 +531,11 @@ export function updateSeasonConfig(guildId, data) {
   )
 }
 
+/**
+ * 次のシーズン終了日を計算する
+ * @param {string} guildId - ギルドID
+ * @returns {string} 次のシーズン終了日（YYYY-MM-DD形式）
+ */
 export function getNextSeasonEnd(guildId) {
   const config = getSeasonConfig(guildId)
   const start = new Date(config.start_date)
@@ -335,6 +557,11 @@ export function getNextSeasonEnd(guildId) {
   }
 }
 
+/**
+ * シーズン終了チェック＆実行
+ * @param {string} guildId - ギルドID
+ * @returns {Object|null} シーズン結果（実行されなかった場合はnull）
+ */
 export function checkAndExecuteSeason(guildId) {
   const db = getDb()
   const config = getSeasonConfig(guildId)
@@ -405,12 +632,22 @@ export function checkAndExecuteSeason(guildId) {
   return { season_number: seasonNum, results }
 }
 
+/**
+ * 現在のシーズン番号を取得する
+ * @param {string} guildId - ギルドID
+ * @returns {number} シーズン番号
+ */
 function getSeasonNumber(guildId) {
   const db = getDb()
   const count = db.prepare('SELECT COUNT(*) as count FROM season_history WHERE guild_id = ?').get(guildId)
   return (count.count || 0) + 1
 }
 
+/**
+ * 現在のシーズン開始日を取得する
+ * @param {string} guildId - ギルドID
+ * @returns {string} シーズン開始日（YYYY-MM-DD形式）
+ */
 function getSeasonStart(guildId) {
   const db = getDb()
   const config = getSeasonConfig(guildId)
@@ -423,6 +660,12 @@ function getSeasonStart(guildId) {
   return config.start_date
 }
 
+/**
+ * シーズン履歴を取得する
+ * @param {string} guildId - ギルドID
+ * @param {number} limit - 取得件数
+ * @returns {Array} シーズン履歴の配列
+ */
 export function getSeasonHistory(guildId, limit = 10) {
   const db = getDb()
   return db.prepare('SELECT * FROM season_history WHERE guild_id = ? ORDER BY id DESC LIMIT ?').all(guildId, limit)
@@ -431,6 +674,10 @@ export function getSeasonHistory(guildId, limit = 10) {
 
 // --- メンテナンス ---
 
+/**
+ * 古いRPトランザクション履歴を削除する
+ * @param {number} retentionDays - 保持日数（デフォルト120日）
+ */
 export function cleanupOldRpTransactions(retentionDays = 120) {
   const db = getDb()
   const cutoff = new Date()
@@ -438,15 +685,27 @@ export function cleanupOldRpTransactions(retentionDays = 120) {
   db.prepare('DELETE FROM rp_transactions WHERE created_at < ?').run(cutoff.toISOString())
 }
 
-// --- 全メンバーランク再判定 ---
+// --- 全メンバーランク確認 ---
 
+/**
+ * 全メンバーのランクキーが有効か確認する
+ * 新設計ではランクは直接管理されるため、存在しないrank_keyの修正のみ行う
+ * @param {string} guildId - ギルドID
+ * @returns {number} 確認されたメンバー数
+ */
 export function recalculateAllRanks(guildId) {
   const db = getDb()
+  const config = getRankConfig(guildId)
+  const validKeys = new Set(config.map(r => r.rank_key))
   const members = db.prepare('SELECT * FROM member_ranks WHERE guild_id = ?').all(guildId)
   const stmt = db.prepare('UPDATE member_ranks SET current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+  let fixedCount = 0
   for (const m of members) {
-    const rank = determineRank(guildId, m.current_rp)
-    stmt.run(rank.rank_key, guildId, m.user_id)
+    if (!validKeys.has(m.current_rank_key)) {
+      // 無効なrank_keyの場合、最低ランクにリセット
+      stmt.run(config[0].rank_key, guildId, m.user_id)
+      fixedCount++
+    }
   }
   return members.length
 }

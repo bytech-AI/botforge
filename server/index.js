@@ -28,7 +28,7 @@ import {
     // RPシステム
     getRankConfig, updateRankConfig, addRankTier, removeRankTier,
     getRankSettings, updateRankSettings,
-    getRpRules, updateRpRules,
+    getRpRules, updateRpRules, createRpRule, deleteRpRule,
     getMemberRank, addRp, getRpLeaderboard, getRpHistory,
     getSeasonConfig, updateSeasonConfig, getNextSeasonEnd, getSeasonHistory,
     checkAndExecuteSeason, recalculateAllRanks,
@@ -573,6 +573,20 @@ app.get('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
 app.put('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
     try {
         updateRpRules(req.query.guildId, req.body.rules || [])
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+app.post('/api/ranks/rp-rules', requireGuildId, requireBody('action', 'label'), (req, res, next) => {
+    try {
+        const rule = createRpRule(req.query.guildId, req.body)
+        res.json(rule)
+    } catch (err) { next(err) }
+})
+
+app.delete('/api/ranks/rp-rules/:id', requireGuildId, requireIntParam(), (req, res, next) => {
+    try {
+        deleteRpRule(req.query.guildId, parseInt(req.params.id))
         res.json({ success: true })
     } catch (err) { next(err) }
 })

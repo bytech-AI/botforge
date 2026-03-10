@@ -60,11 +60,12 @@ export default function Rewards() {
         }
         try {
             if (editing) {
-                await fetch(`/api/rewards/${editing}`, {
+                const res = await fetch(`/api/rewards/${editing}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(form)
                 })
+                if (!res.ok) throw new Error('保存に失敗しました')
                 setRewards(rewards.map(r => r.id === editing ? { ...form, id: editing } : r))
                 showToast('報酬を更新しました')
             } else {
@@ -73,6 +74,7 @@ export default function Rewards() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(form)
                 })
+                if (!res.ok) throw new Error('追加に失敗しました')
                 const newReward = await res.json()
                 setRewards([...rewards, newReward])
                 showToast('報酬を追加しました')
@@ -85,23 +87,29 @@ export default function Rewards() {
 
     const handleDelete = async (id) => {
         try {
-            await fetch(`/api/rewards/${id}`, { method: 'DELETE' })
-        } catch { }
-        setRewards(rewards.filter(r => r.id !== id))
-        showToast('報酬を削除しました')
+            const res = await fetch(`/api/rewards/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error('削除に失敗しました')
+            setRewards(rewards.filter(r => r.id !== id))
+            showToast('報酬を削除しました')
+        } catch {
+            showToast('削除に失敗しました', 'error')
+        }
     }
 
     const toggleEnabled = async (id) => {
         const updated = rewards.map(r => r.id === id ? { ...r, enabled: !r.enabled } : r)
-        setRewards(updated)
         const reward = updated.find(r => r.id === id)
         try {
-            await fetch(`/api/rewards/${id}`, {
+            const res = await fetch(`/api/rewards/${id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(reward)
             })
-        } catch { }
+            if (!res.ok) throw new Error('更新に失敗しました')
+            setRewards(updated)
+        } catch {
+            showToast('切り替えに失敗しました', 'error')
+        }
     }
 
     const formatTime = (dateStr) => {

@@ -30,14 +30,20 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
             const currentIdx = config.findIndex(r => r.rank_key === rankInfo.current_rank_key)
             const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
 
-            // RP進捗バー
-            const nextThreshold = nextRank ? nextRank.rp_threshold : rankInfo.rp_threshold
-            const prevThreshold = rankInfo.rp_threshold
-            const rpProgress = nextRank
-                ? Math.min(100, Math.floor(((rankInfo.current_rp - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
-                : 100
-            const filled = Math.floor(rpProgress / 10)
-            const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+            // RP進捗バー（per-rank方式: 通常ランクは0〜promotion_threshold、Xランクは上限なし）
+            let rpDisplay, progressLine
+            if (rankInfo.is_special) {
+                // Xランク: 上限なし
+                rpDisplay = `**${rankInfo.current_rp.toLocaleString()}** RP`
+                progressLine = '█'.repeat(10) + ' MAX'
+            } else {
+                const threshold = rankInfo.promotion_threshold || 99
+                const rpProgress = Math.min(100, Math.floor((rankInfo.current_rp / threshold) * 100))
+                const filled = Math.floor(rpProgress / 10)
+                const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+                rpDisplay = `**${rankInfo.current_rp}** / ${threshold}${nextRank ? ` (次: ${nextRank.rank_label})` : ''}`
+                progressLine = `${progressBar} ${rpProgress}%`
+            }
 
             const embed = new EmbedBuilder()
                 .setColor(parseInt((rankInfo.color || '#7c5cfc').replace('#', ''), 16))
@@ -45,8 +51,8 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
                 .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
                 .setDescription(`**${rankInfo.icon} ${rankInfo.rank_label}** (倍率 ×${rankInfo.cp_multiplier})`)
                 .addFields(
-                    { name: '📊 RP', value: `**${rankInfo.current_rp.toLocaleString()}** / ${nextRank ? nextThreshold.toLocaleString() : '最大'} ${nextRank ? `(次: ${nextRank.rank_label})` : ''}`, inline: false },
-                    { name: '進捗', value: `${progressBar} ${rpProgress}%`, inline: false },
+                    { name: '📊 RP', value: rpDisplay, inline: false },
+                    { name: '進捗', value: progressLine, inline: false },
                     { name: '💎 ポイント残高', value: `**${Math.floor(member.total_points).toLocaleString()}** pt`, inline: true },
                     { name: '🏆 ランキング', value: `#${rank}`, inline: true },
                     { name: '🔥 連続ログイン', value: `${member.streak_days}日`, inline: true },

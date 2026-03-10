@@ -54,13 +54,17 @@ export async function handleRank(interaction, dbHelpers) {
     const currentIdx = config.findIndex(r => r.rank_key === rankInfo.current_rank_key)
     const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
 
-    const nextThreshold = nextRank ? nextRank.rp_threshold : rankInfo.rp_threshold
-    const prevThreshold = rankInfo.rp_threshold
-    const rpProgress = nextRank
-        ? Math.min(100, Math.floor(((rankInfo.current_rp - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
-        : 100
-    const filled = Math.floor(rpProgress / 7)
-    const progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+    // per-rank方式: 通常ランクは0〜promotion_threshold、Xランクは上限なし
+    let rpProgress, progressBar
+    if (rankInfo.is_special) {
+        rpProgress = 100
+        progressBar = '█'.repeat(14) + ' MAX'
+    } else {
+        const threshold = rankInfo.promotion_threshold || 99
+        rpProgress = Math.min(100, Math.floor((rankInfo.current_rp / threshold) * 100))
+        const filled = Math.floor(rpProgress / 7)
+        progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+    }
 
     let exemptText = ''
     if (rankInfo.decay_exempt) {
@@ -75,9 +79,10 @@ export async function handleRank(interaction, dbHelpers) {
         .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
         .setDescription(
             `**${rankInfo.rank_label}** (CP倍率 ×${rankInfo.cp_multiplier})\n` +
-            `📊 RP: **${rankInfo.current_rp.toLocaleString()}** / ${nextRank ? nextThreshold.toLocaleString() : '最大'}` +
+            `📊 RP: **${rankInfo.current_rp.toLocaleString()}**` +
+            (rankInfo.is_special ? '' : ` / ${rankInfo.promotion_threshold || 99}`) +
             (nextRank ? ` (次: ${nextRank.rank_label})` : '') + '\n' +
-            `[${progressBar}] ${rpProgress}%` +
+            `[${progressBar}]` + (rankInfo.is_special ? '' : ` ${rpProgress}%`) +
             exemptText
         )
 

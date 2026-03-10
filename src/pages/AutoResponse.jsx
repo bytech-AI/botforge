@@ -42,11 +42,12 @@ export default function AutoResponse() {
         }
         try {
             if (editing) {
-                await fetch(`/api/auto-responses/${editing}`, {
+                const res = await fetch(`/api/auto-responses/${editing}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(form)
                 })
+                if (!res.ok) throw new Error('更新に失敗しました')
                 setResponses(responses.map(r => r.id === editing ? { ...form, id: editing } : r))
                 showToast('自動応答を更新しました')
             } else {
@@ -55,6 +56,7 @@ export default function AutoResponse() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ...form, guildId: selectedGuild })
                 })
+                if (!res.ok) throw new Error('追加に失敗しました')
                 const created = await res.json()
                 setResponses([...responses, {
                     id: created.id, trigger: created.trigger_text, matchType: created.match_type,
@@ -71,18 +73,22 @@ export default function AutoResponse() {
     const handleToggle = async (r) => {
         const updated = { ...r, enabled: !r.enabled }
         try {
-            await fetch(`/api/auto-responses/${r.id}`, {
+            const res = await fetch(`/api/auto-responses/${r.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updated)
             })
+            if (!res.ok) throw new Error('更新に失敗しました')
             setResponses(responses.map(x => x.id === r.id ? updated : x))
-        } catch { }
+        } catch {
+            showToast('切り替えに失敗しました', 'error')
+        }
     }
 
     const handleDelete = async (id) => {
         try {
-            await fetch(`/api/auto-responses/${id}`, { method: 'DELETE' })
+            const res = await fetch(`/api/auto-responses/${id}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error('削除に失敗しました')
             setResponses(responses.filter(x => x.id !== id))
             showToast('削除しました')
         } catch {

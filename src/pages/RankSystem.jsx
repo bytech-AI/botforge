@@ -52,42 +52,75 @@ export default function RankSystem() {
     // === 保存関数 ===
     const saveRankConfig = async () => {
         try {
-            await fetch(`/api/ranks/config?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/config?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ranks })
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('ランク設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveRpRules = async () => {
         try {
-            await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rules: rpRules })
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('RPルールを保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveDecaySettings = async () => {
         try {
-            await fetch(`/api/ranks/settings?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/settings?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(decaySettings)
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('減衰設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveSeasonConfig = async () => {
         try {
-            await fetch(`/api/ranks/season?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/season?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(seasonConfig)
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('シーズン設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
+    }
+
+    // === RPルール追加・削除 ===
+    const [showNewRuleForm, setShowNewRuleForm] = useState(false)
+    const [newRule, setNewRule] = useState({ action: '', label: '', icon: '⭐', rp_amount: 10, cooldown: 0 })
+
+    const addRpRule = async () => {
+        try {
+            const res = await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newRule)
+            })
+            if (!res.ok) throw new Error((await res.json()).error || '追加に失敗しました')
+            const created = await res.json()
+            setRpRules([...rpRules, created])
+            setNewRule({ action: '', label: '', icon: '⭐', rp_amount: 10, cooldown: 0 })
+            setShowNewRuleForm(false)
+            showToast('RPルールを追加しました')
+        } catch (err) { showToast(err.message || '追加に失敗しました', 'error') }
+    }
+
+    const deleteRpRule = async (ruleId) => {
+        if (!confirm('このRPルールを削除しますか？')) return
+        try {
+            const res = await fetch(`/api/ranks/rp-rules/${ruleId}?guildId=${selectedGuild}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error || '削除に失敗しました')
+            setRpRules(rpRules.filter(r => r.id !== ruleId))
+            showToast('RPルールを削除しました')
+        } catch (err) { showToast(err.message || '削除に失敗しました', 'error') }
     }
 
     // === 減衰シミュレーション ===
@@ -139,7 +172,7 @@ export default function RankSystem() {
                         borderColor: 'rgba(124, 92, 252, 0.15)'
                     }}>
                         <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                            ⚙️ 各ランクのRP閾値・CP倍率・アイコン・カラーを自由に設定できます。行の追加・削除も可能です。
+                            ⚙️ 各ランクの昇格閾値・CP倍率・アイコン・カラーを設定できます。RP閾値に達すると次のランクに昇格し、RPは0にリセットされます。Xランクは特別枠で、入場時に固定RPが付与されます。
                         </p>
                     </div>
 
@@ -148,13 +181,16 @@ export default function RankSystem() {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>順序</th>
-                                        <th>アイコン</th>
-                                        <th>キー</th>
-                                        <th>ラベル</th>
-                                        <th>RP閾値</th>
-                                        <th>CP倍率</th>
-                                        <th>カラー</th>
+                                        <th style={{ fontSize: '0.78rem' }}>順序</th>
+                                        <th style={{ fontSize: '0.78rem' }}>アイコン</th>
+                                        <th style={{ fontSize: '0.78rem' }}>キー</th>
+                                        <th style={{ fontSize: '0.78rem' }}>ラベル</th>
+                                        <th style={{ fontSize: '0.78rem' }}>昇格閾値</th>
+                                        <th style={{ fontSize: '0.78rem' }}>特殊</th>
+                                        <th style={{ fontSize: '0.78rem' }}>入場RP</th>
+                                        <th style={{ fontSize: '0.78rem' }}>降格閾値</th>
+                                        <th style={{ fontSize: '0.78rem' }}>CP倍率</th>
+                                        <th style={{ fontSize: '0.78rem' }}>カラー</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -172,8 +208,28 @@ export default function RankSystem() {
                                                     onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, rank_label: e.target.value } : x))} />
                                             </td>
                                             <td>
-                                                <input type="number" className="form-input" value={r.rp_threshold} style={{ width: '90px' }}
-                                                    onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, rp_threshold: parseInt(e.target.value) || 0 } : x))} />
+                                                <input type="number" className="form-input" value={r.promotion_threshold} style={{ width: '80px' }}
+                                                    onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, promotion_threshold: parseInt(e.target.value) || 0 } : x))} />
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <input type="checkbox" checked={!!r.is_special}
+                                                    onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, is_special: e.target.checked ? 1 : 0 } : x))} />
+                                            </td>
+                                            <td>
+                                                {r.is_special ? (
+                                                    <input type="number" className="form-input" value={r.entry_rp || 0} style={{ width: '70px' }}
+                                                        onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, entry_rp: parseInt(e.target.value) || 0 } : x))} />
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>-</span>
+                                                )}
+                                            </td>
+                                            <td>
+                                                {r.is_special ? (
+                                                    <input type="number" className="form-input" value={r.demotion_threshold ?? ''} style={{ width: '80px' }}
+                                                        onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, demotion_threshold: e.target.value === '' ? null : parseInt(e.target.value) || 0 } : x))} />
+                                                ) : (
+                                                    <span style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>-</span>
+                                                )}
                                             </td>
                                             <td>
                                                 <input type="number" className="form-input" value={r.cp_multiplier} step="0.1" min="0.1" max="5" style={{ width: '70px' }}
@@ -197,7 +253,8 @@ export default function RankSystem() {
                                 const order = ranks.length > 0 ? Math.max(...ranks.map(r => r.rank_order)) + 1 : 0
                                 setRanks([...ranks, {
                                     rank_key: `new_${order}`, rank_label: '新ランク', rank_order: order,
-                                    rp_threshold: 0, cp_multiplier: 1.0, color: '#808080', icon: '⭐'
+                                    promotion_threshold: 99, is_special: 0, entry_rp: 0, demotion_threshold: null,
+                                    cp_multiplier: 1.0, color: '#808080', icon: '⭐'
                                 }])
                             }}>＋ ランク追加</button>
                             <button className="btn btn-primary" onClick={saveRankConfig}>💾 保存</button>
@@ -218,6 +275,49 @@ export default function RankSystem() {
                         </p>
                     </div>
 
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRuleForm(!showNewRuleForm)}
+                        style={{ alignSelf: 'flex-start' }}>
+                        ＋ 新しいRPルール
+                    </button>
+
+                    {showNewRuleForm && (
+                        <div className="card" style={{ padding: 'var(--spacing-md) var(--spacing-lg)', borderColor: 'rgba(0, 212, 170, 0.3)' }}>
+                            <h4 style={{ fontSize: '0.92rem', marginBottom: 'var(--spacing-md)' }}>新しいRPルールを追加</h4>
+                            <div className="grid-2" style={{ gap: 'var(--spacing-md)' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">アクション（キー）</label>
+                                    <input className="form-input" placeholder="例: event_attend" value={newRule.action}
+                                        onChange={e => setNewRule({ ...newRule, action: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">ラベル</label>
+                                    <input className="form-input" placeholder="例: イベント参加" value={newRule.label}
+                                        onChange={e => setNewRule({ ...newRule, label: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">アイコン</label>
+                                    <input className="form-input" value={newRule.icon} style={{ width: '70px', textAlign: 'center' }}
+                                        onChange={e => setNewRule({ ...newRule, icon: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">RP量</label>
+                                    <input type="number" className="form-input" min="0" value={newRule.rp_amount}
+                                        onChange={e => setNewRule({ ...newRule, rp_amount: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">クールダウン（秒）</label>
+                                    <input type="number" className="form-input" min="0" value={newRule.cooldown}
+                                        onChange={e => setNewRule({ ...newRule, cooldown: parseInt(e.target.value) || 0 })} />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRuleForm(false)}>キャンセル</button>
+                                <button className="btn btn-primary btn-sm" onClick={addRpRule}
+                                    disabled={!newRule.action || !newRule.label}>追加</button>
+                            </div>
+                        </div>
+                    )}
+
                     {rpRules.map((rule) => (
                         <div key={rule.id} className="card" style={{
                             padding: 'var(--spacing-md) var(--spacing-lg)',
@@ -235,11 +335,15 @@ export default function RankSystem() {
                                         <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{rule.action}</p>
                                     </div>
                                 </div>
-                                <label className="toggle">
-                                    <input type="checkbox" checked={rule.enabled}
-                                        onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, enabled: e.target.checked } : r))} />
-                                    <span className="toggle-slider"></span>
-                                </label>
+                                <div className="flex-row gap-md">
+                                    <label className="toggle">
+                                        <input type="checkbox" checked={rule.enabled}
+                                            onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, enabled: e.target.checked } : r))} />
+                                        <span className="toggle-slider"></span>
+                                    </label>
+                                    <button className="btn-icon" style={{ color: 'var(--accent-danger)', fontSize: '0.9rem' }}
+                                        onClick={() => deleteRpRule(rule.id)} title="ルールを削除">✕</button>
+                                </div>
                             </div>
                             {rule.enabled && (
                                 <div className="grid-2" style={{ marginTop: 'var(--spacing-md)' }}>
@@ -515,7 +619,12 @@ export default function RankSystem() {
                                                 border: m.color ? `1px solid ${m.color}44` : undefined,
                                             }}>{m.icon} {m.rank_label}</span>
                                         </td>
-                                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{(m.current_rp || 0).toLocaleString()}</td>
+                                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                                            {m.is_special
+                                                ? (m.current_rp || 0).toLocaleString()
+                                                : `${(m.current_rp || 0).toLocaleString()} / ${(m.promotion_threshold || 0).toLocaleString()}`
+                                            }
+                                        </td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-warning)' }}>×{m.cp_multiplier}</td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-primary-light)' }}>
                                             {(m.total_points || 0).toLocaleString()}

@@ -58,11 +58,12 @@ export default function Moderation() {
             return
         }
         try {
-            await fetch(`/api/moderation/settings?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/moderation/settings?guildId=${selectedGuild}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(settings)
             })
+            if (!res.ok) throw new Error('保存に失敗しました')
             showToast('モデレーション設定を保存しました')
         } catch {
             showToast('保存に失敗しました', 'error')

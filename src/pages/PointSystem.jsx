@@ -75,11 +75,12 @@ export default function PointSystem() {
 
     const saveRules = async () => {
         try {
-            await fetch('/api/points/rules', {
+            const res = await fetch('/api/points/rules', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(rules)
             })
+            if (!res.ok) throw new Error('保存に失敗しました')
             showToast('ポイントルールを保存しました')
         } catch {
             showToast('保存に失敗しました', 'error')
@@ -92,11 +93,12 @@ export default function PointSystem() {
             return
         }
         try {
-            await fetch(`/api/points/economy?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/points/economy?guildId=${selectedGuild}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(economy)
             })
+            if (!res.ok) throw new Error('保存に失敗しました')
             showToast('経済設定を保存しました')
         } catch {
             showToast('保存に失敗しました', 'error')
@@ -695,26 +697,28 @@ export default function PointSystem() {
                 <div style={{ marginTop: 'var(--spacing-xl)', display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn btn-primary btn-lg"
                         onClick={async () => {
-                            await saveRules()
-                            if (selectedGuild) {
-                                // チャンネル倍率保存
-                                try {
-                                    await fetch(`/api/points/channel-multipliers?guildId=${selectedGuild}`, {
+                            try {
+                                await saveRules()
+                                if (selectedGuild) {
+                                    // チャンネル倍率保存
+                                    const cmRes = await fetch(`/api/points/channel-multipliers?guildId=${selectedGuild}`, {
                                         method: 'PUT',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ multipliers: channelMultipliers })
                                     })
-                                } catch { }
-                                // 減衰・有効期限保存
-                                try {
-                                    await fetch(`/api/points/decay-settings?guildId=${selectedGuild}`, {
+                                    if (!cmRes.ok) throw new Error('チャンネル倍率の保存に失敗しました')
+                                    // 減衰・有効期限保存
+                                    const dsRes = await fetch(`/api/points/decay-settings?guildId=${selectedGuild}`, {
                                         method: 'PUT',
                                         headers: { 'Content-Type': 'application/json' },
                                         body: JSON.stringify({ decay, expiry })
                                     })
-                                } catch { }
+                                    if (!dsRes.ok) throw new Error('減衰設定の保存に失敗しました')
+                                }
+                                showToast('ポイント設定を保存しました')
+                            } catch (err) {
+                                showToast(err.message || '保存に失敗しました', 'error')
                             }
-                            showToast('ポイント設定を保存しました')
                         }}>
                         💾 すべての設定を保存
                     </button>

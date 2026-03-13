@@ -12,6 +12,7 @@ import PointSystem from './pages/PointSystem'
 import PointLeaderboard from './pages/PointLeaderboard'
 import Rewards from './pages/Rewards'
 import RankSystem from './pages/RankSystem'
+import AiScoring from './pages/AiScoring'
 import { useState, useEffect, useRef, createContext } from 'react'
 
 export const AppContext = createContext()
@@ -91,6 +92,7 @@ function App() {
                             <Route path="/welcome" element={<WelcomeMessages />} />
                             <Route path="/scheduled" element={<ScheduledMessages />} />
                             <Route path="/moderation" element={<Moderation />} />
+                            <Route path="/ai-scoring" element={<AiScoring />} />
                             <Route path="/embed" element={<EmbedBuilder />} />
                             <Route path="/points" element={<PointSystem />} />
                             <Route path="/leaderboard" element={<PointLeaderboard />} />

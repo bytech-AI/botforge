@@ -46,3 +46,10 @@ export {
   cleanupOldRpTransactions, recalculateAllRanks,
   resetAllRanks, resetUserRank,
 } from './rp-system.js'
+
+// AI採点システム
+export {
+  getAiScoringSettings, updateAiScoringSettings,
+  addScoringResult, getScoringHistory, getScoringStats,
+  getDailyApiCount, getUserDailyScoringCount,
+} from './ai-scoring.js'

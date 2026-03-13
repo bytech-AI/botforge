@@ -333,6 +333,44 @@ export function initDatabase() {
       tiers TEXT DEFAULT '[]'
     );
 
+    -- === AI採点システムテーブル ===
+
+    CREATE TABLE IF NOT EXISTS ai_scoring_settings (
+      guild_id TEXT PRIMARY KEY,
+      enabled INTEGER DEFAULT 0,
+      provider TEXT DEFAULT 'anthropic',
+      api_key_encrypted TEXT DEFAULT '',
+      model TEXT DEFAULT 'claude-haiku-4-5-20251001',
+      prompt TEXT DEFAULT '',
+      channel_mode TEXT DEFAULT 'all',
+      channels TEXT DEFAULT '[]',
+      min_length INTEGER DEFAULT 20,
+      sampling_rate INTEGER DEFAULT 100,
+      bonus_tiers TEXT DEFAULT '[]',
+      low_quality_threshold INTEGER DEFAULT 3,
+      daily_api_limit INTEGER DEFAULT 500,
+      per_user_daily_limit INTEGER DEFAULT 30,
+      notify_mode TEXT DEFAULT 'none',
+      log_channel_id TEXT DEFAULT '',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_scoring_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      message_preview TEXT DEFAULT '',
+      score INTEGER DEFAULT 0,
+      reasoning TEXT DEFAULT '',
+      rp_awarded INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ai_scoring_guild_date
+      ON ai_scoring_history(guild_id, created_at);
+
     -- === Cronロックテーブル（冪等性担保） ===
 
     CREATE TABLE IF NOT EXISTS cron_locks (

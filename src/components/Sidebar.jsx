@@ -16,6 +16,7 @@ const navItems = [
             { path: '/welcome', icon: '👋', label: '入退室メッセージ' },
             { path: '/scheduled', icon: '⏰', label: '定時メッセージ' },
             { path: '/moderation', icon: '🛡️', label: 'モデレーション' },
+            { path: '/ai-scoring', icon: '🧠', label: 'AI採点' },
             { path: '/embed', icon: '🎨', label: 'Embedビルダー' },
         ]
     },

@@ -39,7 +39,11 @@ import {
     acquireCronLock, cleanupCronLocks,
     resetAllPoints, resetUserPoints,
     resetAllRanks, resetUserRank,
+    // AI採点システム
+    getAiScoringSettings, updateAiScoringSettings,
+    getScoringHistory, getScoringStats,
 } from './db.js'
+import { encryptSecret } from './bot.js'
 import cron from 'node-cron'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -733,6 +737,49 @@ app.post('/api/ranks/reset', requireGuildId, (req, res, next) => {
             resetAllRanks(guildId)
         }
         res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+// ============================
+// AI Scoring API
+// ============================
+app.get('/api/ai-scoring/settings', requireGuildId, (req, res, next) => {
+    try {
+        const settings = getAiScoringSettings(req.query.guildId)
+        // APIキーは暗号化された状態のまま返す（フロントでは有無のみ判定）
+        res.json({ ...settings, apiKeyEncrypted: settings.apiKeyEncrypted ? '***' : '' })
+    } catch (err) { next(err) }
+})
+
+app.put('/api/ai-scoring/settings', requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const current = getAiScoringSettings(guildId)
+        const body = req.body
+
+        // APIキーが新しく送られてきた場合は暗号化して保存
+        let apiKeyEncrypted = current.apiKeyEncrypted
+        if (body.apiKey && body.apiKey.trim()) {
+            apiKeyEncrypted = encryptSecret(body.apiKey.trim())
+        }
+
+        updateAiScoringSettings(guildId, {
+            ...body,
+            apiKeyEncrypted,
+        })
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+app.get('/api/ai-scoring/history', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getScoringHistory(req.query.guildId, parseInt(req.query.limit) || 50))
+    } catch (err) { next(err) }
+})
+
+app.get('/api/ai-scoring/stats', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getScoringStats(req.query.guildId))
     } catch (err) { next(err) }
 })
 

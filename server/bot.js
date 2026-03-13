@@ -3,7 +3,7 @@
  * 実際のロジックは server/bot/ 以下に分割済み。
  * index.js からのimportをそのまま維持するためにここで再エクスポートする。
  */
-export { connectBot, disconnectBot, getClient, getBotToken, getBotStatus, autoReconnect, clearToken, getGuilds, getGuildMembers } from './bot/client.js'
+export { connectBot, disconnectBot, getClient, getBotToken, getBotStatus, autoReconnect, clearToken, getGuilds, getGuildMembers, encryptSecret, decryptSecret } from './bot/client.js'
 export { registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand } from './bot/register.js'
 
 import { getClient } from './bot/client.js'
@@ -13,6 +13,7 @@ import { setupMessageHandler } from './bot/handlers/message.js'
 import { setupReactionHandler } from './bot/handlers/reaction.js'
 import { setupVoiceHandler } from './bot/handlers/voice.js'
 import { setupInteractionHandler } from './bot/handlers/interaction.js'
+import { startScoringWorker } from './bot/handlers/ai-scoring.js'
 
 /**
  * すべてのイベントハンドラーをセットアップする
@@ -42,7 +43,10 @@ export function setupHandlers(commandsGetter, db) {
     // ウェルカム/退出メッセージハンドラー
     setupWelcomeHandler(client, dbHelpers)
 
-    console.log('📡 Command handlers set up (with point tracking + rank system)')
+    // AI採点ワーカー起動
+    startScoringWorker(dbHelpers)
+
+    console.log('📡 Command handlers set up (with point tracking + rank system + AI scoring)')
 }
 
 /**

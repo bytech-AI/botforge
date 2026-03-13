@@ -6,6 +6,7 @@ import { Events } from 'discord.js'
 import { checkCooldown } from '../points/cooldown.js'
 import { earnPoints } from '../points/earning.js'
 import { checkMessage } from './moderation.js'
+import { enqueueForScoring } from './ai-scoring.js'
 
 /**
  * MessageCreateイベントハンドラーを登録する
@@ -46,6 +47,11 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
         } catch (err) {
             console.error('Point earn error (message):', err.message)
         }
+
+        // AI採点キューに追加（非同期、メッセージ処理をブロックしない）
+        try {
+            enqueueForScoring(message, dbHelpers)
+        } catch { }
 
         // 自動応答の処理
         try {

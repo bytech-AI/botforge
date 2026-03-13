@@ -79,6 +79,9 @@ function decryptToken(encoded) {
   return decipher.update(encrypted) + decipher.final('utf8')
 }
 
+// 暗号化ユーティリティをexport（APIキー等の暗号化にも使用）
+export { encryptToken as encryptSecret, decryptToken as decryptSecret }
+
 // --- トークンの永続化 ---
 
 /** @param {string} token - 保存するDiscordボットトークン */

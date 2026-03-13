@@ -13,6 +13,7 @@ import PointLeaderboard from './pages/PointLeaderboard'
 import Rewards from './pages/Rewards'
 import RankSystem from './pages/RankSystem'
 import AiScoring from './pages/AiScoring'
+import Backup from './pages/Backup'
 import { useState, useEffect, useRef, createContext } from 'react'
 
 export const AppContext = createContext()
@@ -87,6 +88,7 @@ function App() {
                         <Routes>
                             <Route path="/" element={<Dashboard />} />
                             <Route path="/setup" element={<BotSetup />} />
+                            <Route path="/backup" element={<Backup />} />
                             <Route path="/commands" element={<CommandBuilder />} />
                             <Route path="/auto-response" element={<AutoResponse />} />
                             <Route path="/welcome" element={<WelcomeMessages />} />

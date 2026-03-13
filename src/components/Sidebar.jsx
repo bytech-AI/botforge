@@ -7,6 +7,7 @@ const navItems = [
         section: 'メイン', items: [
             { path: '/', icon: '📊', label: 'ダッシュボード' },
             { path: '/setup', icon: '⚙️', label: 'ボット設定' },
+            { path: '/backup', icon: '💾', label: 'バックアップ' },
         ]
     },
     {

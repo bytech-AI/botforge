@@ -2,6 +2,8 @@ import express from 'express'
 import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { existsSync, copyFileSync, unlinkSync, statSync, readFileSync } from 'fs'
+import multer from 'multer'
 import {
     connectBot, disconnectBot, getBotStatus, clearToken,
     autoReconnect, getGuilds, getGuildMembers, getClient,
@@ -781,6 +783,88 @@ app.get('/api/ai-scoring/stats', requireGuildId, (req, res, next) => {
     try {
         res.json(getScoringStats(req.query.guildId))
     } catch (err) { next(err) }
+})
+
+// ============================
+// Backup / Restore API
+// ============================
+const dataDir = join(__dirname, '..', 'data')
+const dbFilePath = join(dataDir, 'botforge.db')
+
+// ダウンロード: DBファイルをそのまま返す
+app.get('/api/backup/download', (req, res, next) => {
+    try {
+        if (!existsSync(dbFilePath)) {
+            return res.status(404).json({ error: 'データベースファイルが見つかりません' })
+        }
+        // WALをメインDBにチェックポイント（データ整合性のため）
+        try { getDb().pragma('wal_checkpoint(TRUNCATE)') } catch { }
+        const stats = statSync(dbFilePath)
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.setHeader('Content-Disposition', `attachment; filename="botforge-backup-${new Date().toISOString().split('T')[0]}.db"`)
+        res.setHeader('Content-Length', stats.size)
+        res.sendFile(dbFilePath)
+    } catch (err) { next(err) }
+})
+
+// DB情報: サイズ等の統計
+app.get('/api/backup/info', (req, res, next) => {
+    try {
+        if (!existsSync(dbFilePath)) {
+            return res.json({ exists: false })
+        }
+        const stats = statSync(dbFilePath)
+        const db = getDb()
+        const tableCount = db.prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'").get()
+        res.json({
+            exists: true,
+            sizeBytes: stats.size,
+            sizeMB: Math.round(stats.size / 1024 / 1024 * 100) / 100,
+            tables: tableCount.count,
+            lastModified: stats.mtime.toISOString(),
+        })
+    } catch (err) { next(err) }
+})
+
+// アップロード: DBファイルを差し替え
+const upload = multer({ dest: join(dataDir, 'tmp'), limits: { fileSize: 100 * 1024 * 1024 } }) // 100MB上限
+app.post('/api/backup/upload', upload.single('database'), (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'ファイルが選択されていません' })
+        }
+
+        const uploadedPath = req.file.path
+
+        // SQLiteファイルかどうかバリデーション（先頭16バイトのマジックナンバー）
+        const header = readFileSync(uploadedPath).subarray(0, 16)
+        const magic = header.toString('ascii', 0, 16)
+        if (!magic.startsWith('SQLite format 3')) {
+            unlinkSync(uploadedPath)
+            return res.status(400).json({ error: '有効なSQLiteファイルではありません' })
+        }
+
+        // 現在のDBをバックアップ
+        const backupPath = dbFilePath + '.bak'
+        if (existsSync(dbFilePath)) {
+            try { getDb().pragma('wal_checkpoint(TRUNCATE)') } catch { }
+            copyFileSync(dbFilePath, backupPath)
+        }
+
+        // WAL/SHMファイルを削除（新DBとの不整合防止）
+        try { if (existsSync(dbFilePath + '-wal')) unlinkSync(dbFilePath + '-wal') } catch { }
+        try { if (existsSync(dbFilePath + '-shm')) unlinkSync(dbFilePath + '-shm') } catch { }
+
+        // アップロードされたファイルを配置
+        copyFileSync(uploadedPath, dbFilePath)
+        unlinkSync(uploadedPath)
+
+        res.json({ success: true, message: 'データベースをリストアしました。サーバーを再起動してください。' })
+    } catch (err) {
+        // アップロードファイルの後始末
+        if (req.file?.path) try { unlinkSync(req.file.path) } catch { }
+        next(err)
+    }
 })
 
 // ============================

@@ -21,7 +21,7 @@ function App() {
     const [botName, setBotName] = useState('')
     const [botAvatar, setBotAvatar] = useState('')
     const [guilds, setGuilds] = useState([])
-    const [selectedGuild, setSelectedGuild] = useState(null)
+    const [selectedGuild, setSelectedGuild] = useState(() => localStorage.getItem('selectedGuild'))
     const [toast, setToast] = useState(null)
     const guildInitialized = useRef(false)
 
@@ -47,7 +47,9 @@ function App() {
                     // Only auto-select the first guild once on initial load
                     if (gData.length > 0 && !guildInitialized.current) {
                         guildInitialized.current = true
-                        setSelectedGuild(gData[0].id)
+                        const saved = localStorage.getItem('selectedGuild')
+                        const validSaved = saved && gData.some(g => g.id === saved)
+                        setSelectedGuild(validSaved ? saved : gData[0].id)
                     }
                 } else {
                     setBotStatus('offline')
@@ -74,7 +76,7 @@ function App() {
             botName, setBotName,
             botAvatar, setBotAvatar,
             guilds, setGuilds, refreshGuilds,
-            selectedGuild, setSelectedGuild,
+            selectedGuild, setSelectedGuild: (id) => { localStorage.setItem('selectedGuild', id); setSelectedGuild(id) },
             showToast
         }}>
             <Router>

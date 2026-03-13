@@ -28,8 +28,9 @@ import {
     // RPシステム
     getRankConfig, updateRankConfig, addRankTier, removeRankTier,
     getRankSettings, updateRankSettings,
-    getRpRules, updateRpRules,
-    getMemberRank, addRp, getRpLeaderboard, getRpHistory,
+    getRpRules, updateRpRules, createRpRule, deleteRpRule,
+    getMemberRank, addRp, getCpMultiplier, getDailyRpTotal,
+    getRpLeaderboard, getRpHistory,
     getSeasonConfig, updateSeasonConfig, getNextSeasonEnd, getSeasonHistory,
     checkAndExecuteSeason, recalculateAllRanks,
     setDecayExempt, getDecayExemptMembers,
@@ -577,6 +578,20 @@ app.put('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+app.post('/api/ranks/rp-rules', requireGuildId, requireBody('action', 'label'), (req, res, next) => {
+    try {
+        const rule = createRpRule(req.query.guildId, req.body)
+        res.json(rule)
+    } catch (err) { next(err) }
+})
+
+app.delete('/api/ranks/rp-rules/:id', requireGuildId, requireIntParam(), (req, res, next) => {
+    try {
+        deleteRpRule(req.query.guildId, parseInt(req.params.id))
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
 // メンバーランク情報
 app.get('/api/ranks/member/:userId', requireGuildId, (req, res, next) => {
     try {
@@ -597,7 +612,7 @@ app.get('/api/ranks/leaderboard', (req, res, next) => {
         const config = getRankConfig(guildId)
         const enriched = lb.map(m => {
             const rankInfo = config.find(r => r.rank_key === m.current_rank_key) || config[0]
-            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: rankInfo.cp_multiplier }
+            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: rankInfo.cp_multiplier, rp_threshold: rankInfo.rp_threshold ?? 0 }
         })
         res.json(enriched)
     } catch (err) { next(err) }

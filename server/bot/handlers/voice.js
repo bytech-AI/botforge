@@ -46,12 +46,22 @@ export function setupVoiceHandler(client, dbHelpers, getPointRules) {
                                 member.displayName || member.user.username,
                                 member.user.displayAvatarURL({ size: 32 })
                             )
-                            // RP付与（分数分）
+                            // RP付与（分数分、日次上限チェック付き）
                             try {
                                 const rpRules = dbHelpers.getRpRules(guildId)
                                 const rpRule = rpRules.find(r => r.action === 'voice_join' && r.enabled)
                                 if (rpRule) {
-                                    dbHelpers.addRp(guildId, userId, rpRule.rp_amount * minutes, 'voice_join', `ボイス参加 (${minutes}分)`)
+                                    let rpToAdd = rpRule.rp_amount * minutes
+                                    // 日次上限チェック（daily_cap > 0 の場合）
+                                    const dailyCap = rpRule.daily_cap || 0
+                                    if (dailyCap > 0) {
+                                        const todayTotal = dbHelpers.getDailyRpTotal(guildId, userId, 'voice_join')
+                                        const remaining = Math.max(0, dailyCap - todayTotal)
+                                        rpToAdd = Math.min(rpToAdd, remaining)
+                                    }
+                                    if (rpToAdd > 0) {
+                                        dbHelpers.addRp(guildId, userId, rpToAdd, 'voice_join', `ボイス参加 (${minutes}分)`)
+                                    }
                                 }
                             } catch { }
                             // CP付与（ランク倍率適用）

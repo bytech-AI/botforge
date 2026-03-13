@@ -34,8 +34,9 @@ export {
 export {
   getRankConfig, updateRankConfig, addRankTier, removeRankTier,
   getRankSettings, updateRankSettings,
-  getRpRules, updateRpRules,
-  determineRank, getMemberRank, addRp, getCpMultiplier,
+  getRpRules, updateRpRules, createRpRule, deleteRpRule,
+  determineRank, getRankInfo, getMemberRank, addRp, getCpMultiplier,
+  getDailyRpTotal,
   applyDecay, setDecayExempt, getDecayExemptMembers,
   getRpLeaderboard, getRpHistory,
   getSeasonConfig, updateSeasonConfig, getNextSeasonEnd,

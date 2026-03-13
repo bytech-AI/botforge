@@ -118,7 +118,7 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS point_economy_settings (
       guild_id TEXT PRIMARY KEY,
-      transfer_fee_percent REAL DEFAULT 5,
+      transfer_fee_percent REAL DEFAULT 0,
       min_transfer_amount REAL DEFAULT 10,
       daily_transfer_limit REAL DEFAULT 10000,
       daily_bonus_amount REAL DEFAULT 50,
@@ -245,7 +245,11 @@ export function initDatabase() {
       rank_key TEXT NOT NULL,
       rank_label TEXT NOT NULL,
       rank_order INTEGER NOT NULL,
-      rp_threshold INTEGER NOT NULL,
+      rp_threshold INTEGER DEFAULT 0,
+      promotion_threshold INTEGER DEFAULT 99,
+      is_special INTEGER DEFAULT 0,
+      entry_rp INTEGER DEFAULT 0,
+      demotion_threshold INTEGER DEFAULT NULL,
       cp_multiplier REAL NOT NULL,
       color TEXT DEFAULT '#808080',
       icon TEXT DEFAULT '⭐',
@@ -255,7 +259,7 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS rank_settings (
       guild_id TEXT PRIMARY KEY,
       decay_rate REAL DEFAULT 0.02,
-      decay_grace_days INTEGER DEFAULT 1,
+      decay_grace_days INTEGER DEFAULT 5,
       decay_floor INTEGER DEFAULT 0
     );
 
@@ -292,6 +296,7 @@ export function initDatabase() {
       icon TEXT DEFAULT '⭐',
       rp_amount INTEGER DEFAULT 10,
       cooldown INTEGER DEFAULT 0,
+      daily_cap INTEGER DEFAULT 0,
       enabled INTEGER DEFAULT 1,
       UNIQUE(guild_id, action)
     );
@@ -301,7 +306,7 @@ export function initDatabase() {
       guild_id TEXT NOT NULL UNIQUE,
       enabled INTEGER DEFAULT 1,
       cycle_type TEXT DEFAULT 'months',
-      cycle_value INTEGER DEFAULT 3,
+      cycle_value INTEGER DEFAULT 1,
       start_date DATE NOT NULL DEFAULT (date('now')),
       bonus_distribution TEXT DEFAULT '{}',
       notify_channel_id TEXT DEFAULT '',
@@ -338,6 +343,14 @@ export function initDatabase() {
     'ALTER TABLE commands ADD COLUMN point_reward_max REAL DEFAULT 0',
     "ALTER TABLE auto_responses ADD COLUMN guild_id TEXT NOT NULL DEFAULT '__global__'",
     'ALTER TABLE auto_responses ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP',
+    // RPシステム: 旧ランク内相対RPカラム（後方互換のため残す）
+    'ALTER TABLE rank_config ADD COLUMN promotion_threshold INTEGER DEFAULT 99',
+    'ALTER TABLE rank_config ADD COLUMN is_special INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN entry_rp INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN demotion_threshold INTEGER DEFAULT NULL',
+    // RPシステム v2: 累積RP方式への移行
+    'ALTER TABLE rank_config ADD COLUMN rp_threshold INTEGER DEFAULT 0',
+    'ALTER TABLE rp_rules ADD COLUMN daily_cap INTEGER DEFAULT 0',
   ]
   for (const sql of migrations) {
     try { db.exec(sql) } catch { /* column already exists */ }

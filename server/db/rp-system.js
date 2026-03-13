@@ -7,6 +7,18 @@ import { addPoints, getOrCreateMember } from './points.js'
 // 累積RP方式: RPは累積値として管理し、閾値テーブルでランクを判定する
 // 減衰はサボった日だけ適用（活動日は減衰なし）
 
+/** Xランク設定のデフォルト */
+const DEFAULT_X_RANK_CONFIG = {
+  max_rp: 3000,
+  entry_rp: 1000,
+  demotion_threshold: 0,
+  tiers: [
+    { min: 0, max: 999, cp_multiplier: 1.6, label: 'X-I' },
+    { min: 1000, max: 1999, cp_multiplier: 1.7, label: 'X-II' },
+    { min: 2000, max: 3000, cp_multiplier: 1.8, label: 'X-III' },
+  ]
+}
+
 /** ランク設定のデフォルトシード（仕様書準拠: 13段階） */
 const DEFAULT_RANK_CONFIG = [
   { rank_key: 'c_minus', rank_label: 'C-', rank_order: 0, rp_threshold: 0, cp_multiplier: 0.3, color: '#808080', icon: '🌱' },
@@ -123,6 +135,55 @@ export function removeRankTier(guildId, rankKey) {
   db.prepare('DELETE FROM rank_config WHERE guild_id = ? AND rank_key = ?').run(guildId, rankKey)
 }
 
+// --- Xランク専用設定 ---
+
+/**
+ * Xランク設定を取得する（なければデフォルトを作成）
+ */
+export function getXRankConfig(guildId) {
+  const db = getDb()
+  let row = db.prepare('SELECT * FROM x_rank_config WHERE guild_id = ?').get(guildId)
+  if (!row) {
+    db.prepare('INSERT INTO x_rank_config (guild_id, max_rp, entry_rp, demotion_threshold, tiers) VALUES (?, ?, ?, ?, ?)')
+      .run(guildId, DEFAULT_X_RANK_CONFIG.max_rp, DEFAULT_X_RANK_CONFIG.entry_rp, DEFAULT_X_RANK_CONFIG.demotion_threshold, JSON.stringify(DEFAULT_X_RANK_CONFIG.tiers))
+    row = db.prepare('SELECT * FROM x_rank_config WHERE guild_id = ?').get(guildId)
+  }
+  return { ...row, tiers: JSON.parse(row.tiers || '[]') }
+}
+
+/**
+ * Xランク設定を更新する
+ */
+export function updateXRankConfig(guildId, data) {
+  const db = getDb()
+  getXRankConfig(guildId) // ensure exists
+  db.prepare('UPDATE x_rank_config SET max_rp = ?, entry_rp = ?, demotion_threshold = ?, tiers = ? WHERE guild_id = ?')
+    .run(data.max_rp ?? 3000, data.entry_rp ?? 1000, data.demotion_threshold ?? 0, JSON.stringify(data.tiers || []), guildId)
+}
+
+/**
+ * Xランク内のCP倍率をサブティアから判定する
+ */
+function resolveXCpMultiplier(xRankConfig, xRp, fallbackMultiplier) {
+  if (!xRankConfig || !xRankConfig.tiers || xRankConfig.tiers.length === 0) return fallbackMultiplier
+  for (const tier of xRankConfig.tiers) {
+    if (xRp >= tier.min && xRp <= tier.max) return tier.cp_multiplier
+  }
+  // 範囲外なら最後のティアの倍率
+  return xRankConfig.tiers[xRankConfig.tiers.length - 1].cp_multiplier
+}
+
+/**
+ * Xランク内のサブティアラベルを判定する
+ */
+function resolveXTierLabel(xRankConfig, xRp) {
+  if (!xRankConfig || !xRankConfig.tiers || xRankConfig.tiers.length === 0) return null
+  for (const tier of xRankConfig.tiers) {
+    if (xRp >= tier.min && xRp <= tier.max) return tier.label
+  }
+  return xRankConfig.tiers[xRankConfig.tiers.length - 1].label
+}
+
 // --- 減衰設定 ---
 
 /**
@@ -220,6 +281,7 @@ export function determineRank(guildId, currentRp) {
 /**
  * メンバーのランク情報を取得する（なければ作成）
  * 累積RPからランクを再判定し、ズレがあれば自動修正する
+ * Xランクの場合はサブティア情報も返す
  */
 export function getMemberRank(guildId, userId) {
   const db = getDb()
@@ -241,12 +303,29 @@ export function getMemberRank(guildId, userId) {
 
   const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
   const isMaxRank = !nextRank
+  const isXRank = currentRank.rank_key === 'x'
+
+  // Xランクの場合: サブティア情報を追加
+  let xRankInfo = null
+  let effectiveCpMultiplier = currentRank.cp_multiplier
+  if (isXRank) {
+    const xConfig = getXRankConfig(guildId)
+    const xRp = row.x_rp ?? 0
+    effectiveCpMultiplier = resolveXCpMultiplier(xConfig, xRp, currentRank.cp_multiplier)
+    xRankInfo = {
+      x_rp: xRp,
+      x_max_rp: xConfig.max_rp,
+      x_tier_label: resolveXTierLabel(xConfig, xRp),
+      x_demotion_threshold: xConfig.demotion_threshold,
+    }
+  }
 
   return {
     ...row,
     decay_exempt: !!row.decay_exempt,
     rank_label: currentRank.rank_label,
-    cp_multiplier: currentRank.cp_multiplier,
+    cp_multiplier: effectiveCpMultiplier,
+    base_cp_multiplier: currentRank.cp_multiplier,
     color: currentRank.color,
     icon: currentRank.icon,
     rank_order: currentRank.rank_order,
@@ -254,6 +333,8 @@ export function getMemberRank(guildId, userId) {
     next_rp_threshold: nextRank ? (nextRank.rp_threshold ?? 0) : null,
     next_rank_label: nextRank ? nextRank.rank_label : null,
     is_max_rank: isMaxRank,
+    is_x_rank: isXRank,
+    ...xRankInfo,
   }
 }
 
@@ -261,6 +342,7 @@ export function getMemberRank(guildId, userId) {
 
 /**
  * RPを付与し、累積RPに基づいてランクを再判定する
+ * Xランクの場合はx_rpに加算し、降格チェックも行う
  *
  * @param {string} guildId - ギルドID
  * @param {string} userId - ユーザーID
@@ -273,31 +355,69 @@ export function addRp(guildId, userId, amount, source, description = '') {
   const db = getDb()
   getMemberRank(guildId, userId)
 
-  const beforeRow = db.prepare('SELECT current_rp, current_rank_key FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
+  const beforeRow = db.prepare('SELECT current_rp, current_rank_key, x_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
   const previousRankKey = beforeRow.current_rank_key
   const config = getRankConfig(guildId)
+  const xConfig = getXRankConfig(guildId)
 
-  // 累積RPに加算（0下限）
-  let newRp = Math.max(0, beforeRow.current_rp + amount)
+  // Xランク判定用の閾値を取得
+  const xRankConfig = config.find(r => r.rank_key === 'x')
+  const xThreshold = xRankConfig ? (xRankConfig.rp_threshold ?? 0) : Infinity
 
-  // 累積RPからランクを判定
-  const { rank: newRankConfig } = resolveRank(config, newRp)
-  const newRankKey = newRankConfig.rank_key
+  let newRp = beforeRow.current_rp
+  let newXRp = beforeRow.x_rp
+  let newRankKey
+
+  if (beforeRow.current_rank_key === 'x' && beforeRow.x_rp !== null) {
+    // === Xランク中: x_rpに加算 ===
+    newXRp = Math.max(0, Math.min((beforeRow.x_rp || 0) + amount, xConfig.max_rp))
+
+    // 降格チェック: x_rp <= demotion_threshold で S+ に降格
+    if (newXRp <= xConfig.demotion_threshold) {
+      // S+に降格: 累積RPをX閾値の1つ下に設定、x_rpをクリア
+      const s_plus = config.find(r => r.rank_key === 's_plus')
+      newRp = xThreshold - 1
+      newXRp = null
+      newRankKey = s_plus ? s_plus.rank_key : resolveRank(config, newRp).rank.rank_key
+    } else {
+      newRankKey = 'x'
+    }
+  } else {
+    // === 通常ランク: 累積RPに加算 ===
+    newRp = Math.max(0, beforeRow.current_rp + amount)
+    const { rank: newRankConfig } = resolveRank(config, newRp)
+    newRankKey = newRankConfig.rank_key
+
+    // Xランク昇格チェック: 累積RPがX閾値に到達
+    if (newRankKey === 'x' && previousRankKey !== 'x') {
+      newXRp = xConfig.entry_rp
+    }
+  }
 
   // DB更新
-  db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
-    .run(newRp, newRankKey, guildId, userId)
+  db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, x_rp = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+    .run(newRp, newRankKey, newXRp, guildId, userId)
 
   // トランザクション記録
   db.prepare('INSERT INTO rp_transactions (guild_id, user_id, amount, source, description) VALUES (?, ?, ?, ?, ?)')
     .run(guildId, userId, amount, source, description)
 
+  // CP倍率はXランクの場合サブティアで決まる
+  let cpMultiplier
+  if (newRankKey === 'x' && newXRp !== null) {
+    cpMultiplier = resolveXCpMultiplier(xConfig, newXRp, xRankConfig?.cp_multiplier ?? 1.75)
+  } else {
+    const { rank } = resolveRank(config, newRp)
+    cpMultiplier = rank.cp_multiplier
+  }
+
   return {
     rp_added: amount,
     current_rp: newRp,
+    x_rp: newXRp,
     rank_key: newRankKey,
-    rank_label: newRankConfig.rank_label,
-    cp_multiplier: newRankConfig.cp_multiplier,
+    rank_label: config.find(r => r.rank_key === newRankKey)?.rank_label || newRankKey,
+    cp_multiplier: cpMultiplier,
     rank_changed: newRankKey !== previousRankKey,
     previous_rank_key: previousRankKey,
   }
@@ -306,14 +426,19 @@ export function addRp(guildId, userId, amount, source, description = '') {
 // --- CP倍率取得 ---
 
 /**
- * メンバーのCP倍率を取得する
+ * メンバーのCP倍率を取得する（Xランクはサブティアで判定）
  */
 export function getCpMultiplier(guildId, userId) {
   const db = getDb()
-  const row = db.prepare('SELECT current_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
+  const row = db.prepare('SELECT current_rp, current_rank_key, x_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
   if (!row) return 1.0
   const config = getRankConfig(guildId)
   const { rank } = resolveRank(config, row.current_rp)
+
+  if (row.current_rank_key === 'x' && row.x_rp !== null) {
+    const xConfig = getXRankConfig(guildId)
+    return resolveXCpMultiplier(xConfig, row.x_rp, rank.cp_multiplier)
+  }
   return rank.cp_multiplier
 }
 
@@ -354,25 +479,45 @@ export function applyDecay(guildId) {
 
   // 減衰対象のメンバーを取得（非免除 & 猶予期間超過）
   const members = db.prepare(`
-    SELECT mr.user_id, mr.current_rp, mr.current_rank_key FROM member_ranks mr
+    SELECT mr.user_id, mr.current_rp, mr.current_rank_key, mr.x_rp FROM member_ranks mr
     LEFT JOIN member_points mp ON mr.guild_id = mp.guild_id AND mr.user_id = mp.user_id
     WHERE mr.guild_id = ? AND mr.decay_exempt = 0
     AND (mp.last_active IS NULL OR DATE(mp.last_active) < ?)
   `).all(guildId, graceDateStr)
 
-  const updateStmt = db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+  const updateStmt = db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, x_rp = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+  const xConfig = getXRankConfig(guildId)
+  const xRankConfig = config.find(r => r.rank_key === 'x')
+  const xThreshold = xRankConfig ? (xRankConfig.rp_threshold ?? 0) : Infinity
 
   let decayedCount = 0
   for (const m of members) {
-    let newRp = Math.floor(m.current_rp * (1 - settings.decay_rate))
-    newRp = Math.max(newRp, settings.decay_floor)
+    let newRp = m.current_rp
+    let newXRp = m.x_rp
+    let newRankKey = m.current_rank_key
 
-    // 累積RPからランクを再判定
-    const { rank: newRankConfig } = resolveRank(config, newRp)
-    const newRankKey = newRankConfig.rank_key
+    if (m.current_rank_key === 'x' && m.x_rp !== null) {
+      // Xランク: x_rpに減衰適用
+      newXRp = Math.floor(m.x_rp * (1 - settings.decay_rate))
+      newXRp = Math.max(newXRp, 0)
 
-    if (newRp !== m.current_rp || newRankKey !== m.current_rank_key) {
-      updateStmt.run(newRp, newRankKey, guildId, m.user_id)
+      // 降格チェック
+      if (newXRp <= xConfig.demotion_threshold) {
+        const s_plus = config.find(r => r.rank_key === 's_plus')
+        newRp = xThreshold - 1
+        newXRp = null
+        newRankKey = s_plus ? s_plus.rank_key : resolveRank(config, newRp).rank.rank_key
+      }
+    } else {
+      // 通常ランク: 累積RPに減衰適用
+      newRp = Math.floor(m.current_rp * (1 - settings.decay_rate))
+      newRp = Math.max(newRp, settings.decay_floor)
+      const { rank: newRankConfig } = resolveRank(config, newRp)
+      newRankKey = newRankConfig.rank_key
+    }
+
+    if (newRp !== m.current_rp || newXRp !== m.x_rp || newRankKey !== m.current_rank_key) {
+      updateStmt.run(newRp, newRankKey, newXRp, guildId, m.user_id)
       decayedCount++
     }
   }
@@ -577,7 +722,7 @@ export function cleanupOldRpTransactions(retentionDays = 120) {
 }
 
 /**
- * 全メンバーのランクを累積RPから再判定する
+ * 全メンバーのランクを累積RPから再判定する（Xランクのx_rpは維持）
  */
 export function recalculateAllRanks(guildId) {
   const db = getDb()
@@ -586,6 +731,9 @@ export function recalculateAllRanks(guildId) {
   const stmt = db.prepare('UPDATE member_ranks SET current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
   let fixedCount = 0
   for (const m of members) {
+    // Xランクでx_rpがある場合はそのまま維持
+    if (m.current_rank_key === 'x' && m.x_rp !== null) continue
+
     const { rank: correctRank } = resolveRank(config, m.current_rp)
     if (m.current_rank_key !== correctRank.rank_key) {
       stmt.run(correctRank.rank_key, guildId, m.user_id)

@@ -49,19 +49,26 @@ export async function handleRank(interaction, dbHelpers) {
     const targetUser = interaction.options.getUser('user') || interaction.user
     const rankInfo = dbHelpers.getMemberRank(guildId, targetUser.id)
 
-    // 累積RP方式: 現在RP → 次ランクの閾値
-    let rpProgress, progressBar
-    if (rankInfo.is_max_rank) {
-        rpProgress = 100
+    // RP進捗表示
+    let rpLine, progressBar
+    if (rankInfo.is_x_rank && rankInfo.x_rp !== null && rankInfo.x_rp !== undefined) {
+        // Xランク: パワーゲージ
+        const xProgress = rankInfo.x_max_rp > 0 ? Math.min(100, Math.floor((rankInfo.x_rp / rankInfo.x_max_rp) * 100)) : 100
+        const filled = Math.floor(xProgress / 7)
+        progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+        rpLine = `📊 XP: **${rankInfo.x_rp.toLocaleString()}** / ${rankInfo.x_max_rp.toLocaleString()}${rankInfo.x_tier_label ? ` (${rankInfo.x_tier_label})` : ''}\n[${progressBar}] ${xProgress}%`
+    } else if (rankInfo.is_max_rank) {
         progressBar = '█'.repeat(14) + ' MAX'
+        rpLine = `📊 RP: **${rankInfo.current_rp.toLocaleString()}**\n[${progressBar}]`
     } else {
         const currentThreshold = rankInfo.rp_threshold
         const nextThreshold = rankInfo.next_rp_threshold
         const rangeSize = nextThreshold - currentThreshold
         const progressInRange = rankInfo.current_rp - currentThreshold
-        rpProgress = rangeSize > 0 ? Math.min(100, Math.floor((progressInRange / rangeSize) * 100)) : 100
+        const rpProgress = rangeSize > 0 ? Math.min(100, Math.floor((progressInRange / rangeSize) * 100)) : 100
         const filled = Math.floor(rpProgress / 7)
         progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+        rpLine = `📊 RP: **${rankInfo.current_rp.toLocaleString()}** / ${nextThreshold.toLocaleString()}${rankInfo.next_rank_label ? ` (次: ${rankInfo.next_rank_label})` : ''}\n[${progressBar}] ${rpProgress}%`
     }
 
     let exemptText = ''
@@ -77,10 +84,7 @@ export async function handleRank(interaction, dbHelpers) {
         .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
         .setDescription(
             `**${rankInfo.rank_label}** (CP倍率 ×${rankInfo.cp_multiplier})\n` +
-            `📊 RP: **${rankInfo.current_rp.toLocaleString()}**` +
-            (rankInfo.is_max_rank ? '' : ` / ${rankInfo.next_rp_threshold.toLocaleString()}`) +
-            (rankInfo.next_rank_label ? ` (次: ${rankInfo.next_rank_label})` : '') + '\n' +
-            `[${progressBar}]` + (rankInfo.is_max_rank ? '' : ` ${rpProgress}%`) +
+            rpLine +
             exemptText
         )
 

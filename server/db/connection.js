@@ -323,6 +323,16 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- === Xランク専用設定テーブル ===
+
+    CREATE TABLE IF NOT EXISTS x_rank_config (
+      guild_id TEXT PRIMARY KEY,
+      max_rp INTEGER DEFAULT 3000,
+      entry_rp INTEGER DEFAULT 1000,
+      demotion_threshold INTEGER DEFAULT 0,
+      tiers TEXT DEFAULT '[]'
+    );
+
     -- === Cronロックテーブル（冪等性担保） ===
 
     CREATE TABLE IF NOT EXISTS cron_locks (
@@ -351,6 +361,8 @@ export function initDatabase() {
     // RPシステム v2: 累積RP方式への移行
     'ALTER TABLE rank_config ADD COLUMN rp_threshold INTEGER DEFAULT 0',
     'ALTER TABLE rp_rules ADD COLUMN daily_cap INTEGER DEFAULT 0',
+    // Xランク専用: member_ranksにx_rpカラム追加
+    'ALTER TABLE member_ranks ADD COLUMN x_rp INTEGER DEFAULT NULL',
   ]
   for (const sql of migrations) {
     try { db.exec(sql) } catch { /* column already exists */ }

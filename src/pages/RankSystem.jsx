@@ -17,6 +17,8 @@ export default function RankSystem() {
     const [seasonConfig, setSeasonConfig] = useState({ enabled: true, cycle_type: 'months', cycle_value: 1, start_date: '', bonus_distribution: { rank_bonuses: {}, top_bonuses: [] }, notify_channel_id: '' })
     const [nextSeasonEnd, setNextSeasonEnd] = useState('')
     const [seasonHistory, setSeasonHistory] = useState([])
+    // Xランク設定
+    const [xRankConfig, setXRankConfig] = useState({ max_rp: 3000, entry_rp: 1000, demotion_threshold: 0, tiers: [] })
     // リーダーボード
     const [leaderboard, setLeaderboard] = useState([])
     const [searchQuery, setSearchQuery] = useState('')
@@ -28,6 +30,7 @@ export default function RankSystem() {
         fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`).then(r => r.json()).then(setRpRules).catch(() => { })
         fetch(`/api/ranks/settings?guildId=${selectedGuild}`).then(r => r.json()).then(setDecaySettings).catch(() => { })
         fetch(`/api/ranks/exempt?guildId=${selectedGuild}`).then(r => r.json()).then(setExemptMembers).catch(() => { })
+        fetch(`/api/ranks/x-config?guildId=${selectedGuild}`).then(r => r.json()).then(setXRankConfig).catch(() => { })
         fetch(`/api/ranks/season?guildId=${selectedGuild}`).then(r => r.json()).then(setSeasonConfig).catch(() => { })
         fetch(`/api/ranks/season/next?guildId=${selectedGuild}`).then(r => r.json()).then(d => setNextSeasonEnd(d.nextEnd || '')).catch(() => { })
         fetch(`/api/ranks/season/history?guildId=${selectedGuild}`).then(r => r.json()).then(setSeasonHistory).catch(() => { })
@@ -58,6 +61,17 @@ export default function RankSystem() {
             })
             if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('ランク設定を保存しました')
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
+    }
+
+    const saveXRankConfig = async () => {
+        try {
+            const res = await fetch(`/api/ranks/x-config?guildId=${selectedGuild}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(xRankConfig)
+            })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
+            showToast('Xランク設定を保存しました')
         } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
@@ -239,6 +253,106 @@ export default function RankSystem() {
                                 }])
                             }}>＋ ランク追加</button>
                             <button className="btn btn-primary" onClick={saveRankConfig}>💾 保存</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Xランク専用設定（ランク設定タブ内） */}
+            {activeTab === 'config' && (
+                <div className="card" style={{ marginTop: 'var(--spacing-md)' }}>
+                    <div className="card-header">
+                        <h2>✦ Xランク専用設定</h2>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                        Xランクは特別なランクです。Xランク内で独自のRP（パワー）を持ち、サブティアでCP倍率が変化します。パワーが0になるとS+に降格します。
+                    </p>
+
+                    <div className="grid-2" style={{ gap: 'var(--spacing-lg)' }}>
+                        <div className="form-group">
+                            <label className="form-label">最大パワー（X内RP上限）</label>
+                            <input type="number" className="form-input" min="100" value={xRankConfig.max_rp}
+                                onChange={e => setXRankConfig({ ...xRankConfig, max_rp: parseInt(e.target.value) || 3000 })} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">加入時パワー（X昇格時の初期値）</label>
+                            <input type="number" className="form-input" min="0" value={xRankConfig.entry_rp}
+                                onChange={e => setXRankConfig({ ...xRankConfig, entry_rp: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">降格閾値（この値以下でS+に降格）</label>
+                            <input type="number" className="form-input" min="0" value={xRankConfig.demotion_threshold}
+                                onChange={e => setXRankConfig({ ...xRankConfig, demotion_threshold: parseInt(e.target.value) || 0 })} />
+                        </div>
+                    </div>
+
+                    {/* サブティア設定 */}
+                    <div style={{ marginTop: 'var(--spacing-lg)' }}>
+                        <label className="form-label" style={{ marginBottom: 'var(--spacing-sm)' }}>サブティア（パワー範囲 → CP倍率）</label>
+                        <div className="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ラベル</th>
+                                        <th>パワー下限</th>
+                                        <th>パワー上限</th>
+                                        <th>CP倍率</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(xRankConfig.tiers || []).map((tier, i) => (
+                                        <tr key={i}>
+                                            <td>
+                                                <input className="form-input" value={tier.label || ''} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], label: e.target.value }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" min="0" value={tier.min} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], min: parseInt(e.target.value) || 0 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" min="0" value={tier.max} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], max: parseInt(e.target.value) || 0 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" step="0.1" min="0.1" max="10" value={tier.cp_multiplier} style={{ width: '80px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], cp_multiplier: parseFloat(e.target.value) || 1 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <button className="btn-icon" style={{ color: 'var(--accent-danger)' }}
+                                                    onClick={() => setXRankConfig({ ...xRankConfig, tiers: xRankConfig.tiers.filter((_, j) => j !== i) })}>✕</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="flex-between" style={{ marginTop: 'var(--spacing-sm)' }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => {
+                                const lastMax = xRankConfig.tiers.length > 0 ? xRankConfig.tiers[xRankConfig.tiers.length - 1].max + 1 : 0
+                                setXRankConfig({
+                                    ...xRankConfig,
+                                    tiers: [...xRankConfig.tiers, { min: lastMax, max: lastMax + 999, cp_multiplier: 1.5, label: `X-${xRankConfig.tiers.length + 1}` }]
+                                })
+                            }}>＋ ティア追加</button>
+                            <button className="btn btn-primary" onClick={saveXRankConfig}>💾 Xランク設定を保存</button>
                         </div>
                     </div>
                 </div>
@@ -609,10 +723,13 @@ export default function RankSystem() {
                                                 background: m.color ? `${m.color}22` : undefined,
                                                 color: m.color || undefined,
                                                 border: m.color ? `1px solid ${m.color}44` : undefined,
-                                            }}>{m.icon} {m.rank_label}</span>
+                                            }}>{m.icon} {m.rank_label}{m.x_tier_label ? ` (${m.x_tier_label})` : ''}</span>
                                         </td>
                                         <td style={{ textAlign: 'right', fontWeight: 700 }}>
-                                            {(m.current_rp || 0).toLocaleString()}
+                                            {m.current_rank_key === 'x' && m.x_rp !== null
+                                                ? <span title={`累積RP: ${(m.current_rp || 0).toLocaleString()}`}>{(m.x_rp || 0).toLocaleString()} <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>XP</span></span>
+                                                : (m.current_rp || 0).toLocaleString()
+                                            }
                                         </td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-warning)' }}>×{m.cp_multiplier}</td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-primary-light)' }}>

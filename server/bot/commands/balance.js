@@ -27,10 +27,16 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
             const rank = dbHelpers.getUserRank(guildId, targetUser.id)
             const rankInfo = dbHelpers.getMemberRank(guildId, targetUser.id)
 
-            // RP進捗バー（累積RP方式: 現在RP → 次のランク閾値）
+            // RP進捗バー
             let rpDisplay, progressLine
-            if (rankInfo.is_max_rank) {
-                // 最高ランク: 上限なし
+            if (rankInfo.is_x_rank && rankInfo.x_rp !== null && rankInfo.x_rp !== undefined) {
+                // Xランク: パワーゲージ表示
+                const xProgress = rankInfo.x_max_rp > 0 ? Math.min(100, Math.floor((rankInfo.x_rp / rankInfo.x_max_rp) * 100)) : 100
+                const filled = Math.floor(xProgress / 10)
+                const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+                rpDisplay = `**${rankInfo.x_rp.toLocaleString()}** / ${rankInfo.x_max_rp.toLocaleString()} XP${rankInfo.x_tier_label ? ` (${rankInfo.x_tier_label})` : ''}`
+                progressLine = `${progressBar} ${xProgress}%`
+            } else if (rankInfo.is_max_rank) {
                 rpDisplay = `**${rankInfo.current_rp.toLocaleString()}** RP`
                 progressLine = '█'.repeat(10) + ' MAX'
             } else {

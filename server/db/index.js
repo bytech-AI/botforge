@@ -33,6 +33,7 @@ export {
 // RPランクシステム
 export {
   getRankConfig, updateRankConfig, addRankTier, removeRankTier,
+  getXRankConfig, updateXRankConfig,
   getRankSettings, updateRankSettings,
   getRpRules, updateRpRules, createRpRule, deleteRpRule,
   determineRank, getRankInfo, getMemberRank, addRp, getCpMultiplier,

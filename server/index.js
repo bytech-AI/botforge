@@ -27,6 +27,7 @@ import {
     getPointDecaySettings, updatePointDecaySettings,
     // RPシステム
     getRankConfig, updateRankConfig, addRankTier, removeRankTier,
+    getXRankConfig, updateXRankConfig,
     getRankSettings, updateRankSettings,
     getRpRules, updateRpRules, createRpRule, deleteRpRule,
     getMemberRank, addRp, getCpMultiplier, getDailyRpTotal,
@@ -533,6 +534,20 @@ app.delete('/api/ranks/config/tier/:rankKey', requireGuildId, (req, res, next) =
     } catch (err) { next(err) }
 })
 
+// Xランク専用設定
+app.get('/api/ranks/x-config', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getXRankConfig(req.query.guildId))
+    } catch (err) { next(err) }
+})
+
+app.put('/api/ranks/x-config', requireGuildId, (req, res, next) => {
+    try {
+        updateXRankConfig(req.query.guildId, req.body)
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
 // 減衰設定
 app.get('/api/ranks/settings', requireGuildId, (req, res, next) => {
     try {
@@ -610,9 +625,21 @@ app.get('/api/ranks/leaderboard', (req, res, next) => {
     try {
         const lb = getRpLeaderboard(guildId, parseInt(limit) || 50)
         const config = getRankConfig(guildId)
+        const xConfig = getXRankConfig(guildId)
         const enriched = lb.map(m => {
             const rankInfo = config.find(r => r.rank_key === m.current_rank_key) || config[0]
-            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: rankInfo.cp_multiplier, rp_threshold: rankInfo.rp_threshold ?? 0 }
+            let cpMul = rankInfo.cp_multiplier
+            let xTierLabel = null
+            if (m.current_rank_key === 'x' && m.x_rp !== null) {
+                for (const tier of (xConfig.tiers || [])) {
+                    if (m.x_rp >= tier.min && m.x_rp <= tier.max) {
+                        cpMul = tier.cp_multiplier
+                        xTierLabel = tier.label
+                        break
+                    }
+                }
+            }
+            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: cpMul, rp_threshold: rankInfo.rp_threshold ?? 0, x_tier_label: xTierLabel }
         })
         res.json(enriched)
     } catch (err) { next(err) }

@@ -316,7 +316,6 @@ export default function AiScoring() {
                                     }}>
                                         {currentGuild?.channels?.length > 0 ? (
                                             currentGuild.channels
-                                                .filter(ch => ch.type === 0)
                                                 .map(ch => (
                                                     <label key={ch.id} style={{
                                                         display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)',

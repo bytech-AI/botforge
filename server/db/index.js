@@ -28,6 +28,7 @@ export {
   getOrCreateMember, addPoints, transferPoints, addVoiceMinutes,
   getLeaderboard, getUserRank, getTransactionHistory, getPointStats,
   getEconomySettings, updateEconomySettings, claimDaily, getDailyTransferTotal,
+  resetAllPoints, resetUserPoints,
 } from './points.js'
 
 // RPランクシステム
@@ -43,4 +44,5 @@ export {
   getSeasonConfig, updateSeasonConfig, getNextSeasonEnd,
   checkAndExecuteSeason, getSeasonHistory,
   cleanupOldRpTransactions, recalculateAllRanks,
+  resetAllRanks, resetUserRank,
 } from './rp-system.js'

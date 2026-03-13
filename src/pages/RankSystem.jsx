@@ -175,6 +175,7 @@ export default function RankSystem() {
                     { id: 'season', label: '🏆 シーズンボーナス' },
                     { id: 'leaderboard', label: '🏅 RPリーダーボード' },
                     { id: 'stats', label: '📊 分布 & 履歴' },
+                    { id: 'danger', label: '⚠️ リセット' },
                 ].map(tab => (
                     <button key={tab.id}
                         className={`tab ${activeTab === tab.id ? 'active' : ''}`}
@@ -797,6 +798,80 @@ export default function RankSystem() {
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* リセット（危険な操作）タブ */}
+            {activeTab === 'danger' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
+                    <div className="card" style={{
+                        background: 'linear-gradient(135deg, rgba(255, 71, 87, 0.08) 0%, rgba(255, 107, 107, 0.04) 100%)',
+                        borderColor: 'rgba(255, 71, 87, 0.25)'
+                    }}>
+                        <p style={{ fontSize: '0.88rem', color: 'var(--accent-danger)' }}>
+                            ⚠️ この操作は取り消せません。全メンバーのRP・ランクがリセットされます。
+                        </p>
+                    </div>
+
+                    <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                        <div className="card-header">
+                            <div>
+                                <h2>🗑️ 全メンバーのランクリセット</h2>
+                                <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    全メンバーのRP・ランクをC-に戻し、RP取引履歴を削除します
+                                </p>
+                            </div>
+                        </div>
+                        <button className="btn btn-danger" onClick={async () => {
+                            if (!window.confirm('本当にサーバー全体のランクをリセットしますか？\nこの操作は取り消せません。')) return
+                            if (!window.confirm('最終確認: すべてのメンバーのRP・ランクがリセットされます。よろしいですか？')) return
+                            try {
+                                const res = await fetch(`/api/ranks/reset?guildId=${selectedGuild}`, {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({})
+                                })
+                                if (!res.ok) throw new Error()
+                                showToast('全メンバーのランクをリセットしました')
+                                // リーダーボード再取得
+                                fetch(`/api/ranks/leaderboard?guildId=${selectedGuild}`).then(r => r.json()).then(setLeaderboard).catch(() => {})
+                            } catch { showToast('リセットに失敗しました', 'error') }
+                        }}>
+                            全ランクをリセット
+                        </button>
+                    </div>
+
+                    <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                        <div className="card-header">
+                            <div>
+                                <h2>👤 特定ユーザーのランクリセット</h2>
+                                <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    指定したユーザーのRP・ランクのみをリセットします
+                                </p>
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">ユーザーID</label>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                <input type="text" className="form-input" id="rank-reset-user-id"
+                                    placeholder="例: 123456789012345678" />
+                                <button className="btn btn-danger" onClick={async () => {
+                                    const userId = document.getElementById('rank-reset-user-id').value.trim()
+                                    if (!userId) { showToast('ユーザーIDを入力してください', 'error'); return }
+                                    if (!window.confirm(`ユーザー ${userId} のランクをリセットしますか？`)) return
+                                    try {
+                                        const res = await fetch(`/api/ranks/reset?guildId=${selectedGuild}`, {
+                                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ userId })
+                                        })
+                                        if (!res.ok) throw new Error()
+                                        showToast('ユーザーのランクをリセットしました')
+                                    } catch { showToast('リセットに失敗しました', 'error') }
+                                }}>
+                                    リセット
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

@@ -118,6 +118,7 @@ export default function PointSystem() {
                     { id: 'channels', label: '📍 チャンネル倍率' },
                     { id: 'bonus', label: '🎯 ボーナス' },
                     { id: 'decay', label: '📉 減衰・有効期限' },
+                    { id: 'danger', label: '⚠️ リセット' },
                 ].map(tab => (
                     <button
                         key={tab.id}
@@ -691,7 +692,87 @@ export default function PointSystem() {
                 </div>
             )}
 
-            {activeTab !== 'economy' && activeTab !== 'actions' && (
+            {/* Danger Zone - Reset Tab */}
+            {activeTab === 'danger' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
+                    <div className="card" style={{
+                        background: 'linear-gradient(135deg, rgba(255, 71, 87, 0.08) 0%, rgba(255, 107, 107, 0.04) 100%)',
+                        borderColor: 'rgba(255, 71, 87, 0.25)'
+                    }}>
+                        <p style={{ fontSize: '0.88rem', color: 'var(--accent-danger)' }}>
+                            ⚠️ この操作は取り消せません。実行前に必ず確認してください。
+                        </p>
+                    </div>
+
+                    {!selectedGuild ? (
+                        <div className="card" style={{ textAlign: 'center', padding: 'var(--spacing-xl)' }}>
+                            <p style={{ color: 'var(--text-secondary)' }}>サーバーを選択してください</p>
+                        </div>
+                    ) : (
+                        <>
+                            <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                                <div className="card-header">
+                                    <div>
+                                        <h2>🗑️ 全メンバーのポイントリセット</h2>
+                                        <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                            サーバー内の全メンバーのポイントを0にリセットし、取引履歴を削除します
+                                        </p>
+                                    </div>
+                                </div>
+                                <button className="btn btn-danger" onClick={async () => {
+                                    if (!window.confirm('本当にサーバー全体のポイントをリセットしますか？\nこの操作は取り消せません。')) return
+                                    if (!window.confirm('最終確認: すべてのメンバーのポイントが0になります。よろしいですか？')) return
+                                    try {
+                                        const res = await fetch(`/api/points/reset?guildId=${selectedGuild}`, {
+                                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({})
+                                        })
+                                        if (!res.ok) throw new Error()
+                                        showToast('全メンバーのポイントをリセットしました')
+                                    } catch { showToast('リセットに失敗しました', 'error') }
+                                }}>
+                                    全ポイントをリセット
+                                </button>
+                            </div>
+
+                            <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                                <div className="card-header">
+                                    <div>
+                                        <h2>👤 特定ユーザーのポイントリセット</h2>
+                                        <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                            指定したユーザーのポイントのみをリセットします
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">ユーザーID</label>
+                                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                        <input type="text" className="form-input" id="point-reset-user-id"
+                                            placeholder="例: 123456789012345678" />
+                                        <button className="btn btn-danger" onClick={async () => {
+                                            const userId = document.getElementById('point-reset-user-id').value.trim()
+                                            if (!userId) { showToast('ユーザーIDを入力してください', 'error'); return }
+                                            if (!window.confirm(`ユーザー ${userId} のポイントをリセットしますか？`)) return
+                                            try {
+                                                const res = await fetch(`/api/points/reset?guildId=${selectedGuild}`, {
+                                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                                    body: JSON.stringify({ userId })
+                                                })
+                                                if (!res.ok) throw new Error()
+                                                showToast('ユーザーのポイントをリセットしました')
+                                            } catch { showToast('リセットに失敗しました', 'error') }
+                                        }}>
+                                            リセット
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+
+            {activeTab !== 'economy' && activeTab !== 'actions' && activeTab !== 'danger' && (
                 <div style={{ marginTop: 'var(--spacing-xl)', display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn btn-primary btn-lg"
                         onClick={async () => {

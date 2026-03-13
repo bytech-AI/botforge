@@ -712,6 +712,18 @@ export function getSeasonHistory(guildId, limit = 10) {
     .map(h => ({ ...h, results: JSON.parse(h.results || '[]') }))
 }
 
+export function resetAllRanks(guildId) {
+  const db = getDb()
+  db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ?").run(guildId)
+  db.prepare('DELETE FROM rp_transactions WHERE guild_id = ?').run(guildId)
+}
+
+export function resetUserRank(guildId, userId) {
+  const db = getDb()
+  db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ? AND user_id = ?").run(guildId, userId)
+  db.prepare('DELETE FROM rp_transactions WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+}
+
 // --- メンテナンス ---
 
 export function cleanupOldRpTransactions(retentionDays = 120) {

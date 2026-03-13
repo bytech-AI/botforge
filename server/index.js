@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import {
     connectBot, disconnectBot, getBotStatus, clearToken,
-    autoReconnect, getGuilds, getGuildMembers,
+    autoReconnect, getGuilds, getGuildMembers, getClient,
     registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, setupHandlers
 } from './bot.js'
 import { requireGuildId, requireIntParam, requireBody, maxLength, numberRange } from './middleware/validate.js'
@@ -37,6 +37,8 @@ import {
     setDecayExempt, getDecayExemptMembers,
     applyDecay, cleanupOldRpTransactions,
     acquireCronLock, cleanupCronLocks,
+    resetAllPoints, resetUserPoints,
+    resetAllRanks, resetUserRank,
 } from './db.js'
 import cron from 'node-cron'
 
@@ -706,6 +708,34 @@ app.post('/api/ranks/recalculate', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+// ポイントリセット
+app.post('/api/points/reset', requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const { userId } = req.body || {}
+        if (userId) {
+            resetUserPoints(guildId, userId)
+        } else {
+            resetAllPoints(guildId)
+        }
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+// ランクリセット
+app.post('/api/ranks/reset', requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const { userId } = req.body || {}
+        if (userId) {
+            resetUserRank(guildId, userId)
+        } else {
+            resetAllRanks(guildId)
+        }
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
 // ============================
 // Cron Jobs
 // ============================
@@ -728,6 +758,67 @@ cron.schedule('0 19 * * *', () => {
         console.log('🔄 Daily rank maintenance completed')
     } catch (err) {
         console.error('Cron error:', err.message)
+    }
+})
+
+// 毎分: 定時メッセージチェック
+cron.schedule('* * * * *', () => {
+    try {
+        const client = getClient ? getClient() : null
+        if (!client || client.ws.status !== 0) return // Bot not connected
+
+        const guilds = getGuilds()
+        const now = new Date()
+
+        for (const guild of guilds) {
+            try {
+                const messages = getAllScheduledMessages(guild.id)
+                for (const msg of messages) {
+                    if (!msg.enabled || !msg.channelId) continue
+
+                    // 時刻チェック（HH:MM形式）
+                    const tz = msg.timezone || 'Asia/Tokyo'
+                    let nowInTz
+                    try {
+                        nowInTz = new Date(now.toLocaleString('en-US', { timeZone: tz }))
+                    } catch {
+                        nowInTz = now
+                    }
+                    const currentTime = `${String(nowInTz.getHours()).padStart(2, '0')}:${String(nowInTz.getMinutes()).padStart(2, '0')}`
+                    if (currentTime !== msg.time) continue
+
+                    // 曜日チェック（0=月, 6=日 → JSの getDay は 0=日, 1=月...）
+                    const days = JSON.parse(msg.days || '[0,1,2,3,4,5,6]')
+                    const jsDay = nowInTz.getDay() // 0=Sun, 1=Mon, ...
+                    const mappedDay = jsDay === 0 ? 6 : jsDay - 1 // Convert to 0=Mon, 6=Sun
+                    if (!days.includes(mappedDay)) continue
+
+                    // 重複実行防止（同日同メッセージを2回送らない）
+                    if (msg.lastRun) {
+                        const lastDate = new Date(msg.lastRun).toISOString().split('T')[0]
+                        const todayDate = now.toISOString().split('T')[0]
+                        if (lastDate === todayDate) continue
+                    }
+
+                    // 送信
+                    const guildObj = client.guilds.cache.get(guild.id)
+                    if (!guildObj) continue
+                    const channel = guildObj.channels.cache.get(msg.channelId)
+                    if (!channel) continue
+
+                    channel.send(msg.message).then(() => {
+                        // last_run 更新
+                        updateScheduledMessage(msg.id, { ...msg, last_run: now.toISOString() })
+                    }).catch(err => {
+                        console.error(`Scheduled message error (${msg.name}):`, err.message)
+                    })
+                }
+            } catch (err) {
+                console.error(`Scheduled message guild error:`, err.message)
+            }
+        }
+    } catch (err) {
+        console.error('Scheduled message cron error:', err.message)
     }
 })
 

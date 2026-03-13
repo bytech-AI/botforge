@@ -273,3 +273,17 @@ export function getDailyTransferTotal(guildId, userId) {
   `).get(guildId, userId, today)
   return result.total
 }
+
+export function resetAllPoints(guildId) {
+  const db = getDb()
+  db.prepare('UPDATE member_points SET total_points = 0, total_earned = 0, level = 1, messages = 0, reactions = 0, voice_minutes = 0, streak_days = 0 WHERE guild_id = ?').run(guildId)
+  db.prepare('DELETE FROM point_transactions WHERE guild_id = ?').run(guildId)
+  db.prepare('DELETE FROM daily_claims WHERE guild_id = ?').run(guildId)
+}
+
+export function resetUserPoints(guildId, userId) {
+  const db = getDb()
+  db.prepare('UPDATE member_points SET total_points = 0, total_earned = 0, level = 1, messages = 0, reactions = 0, voice_minutes = 0, streak_days = 0 WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+  db.prepare('DELETE FROM point_transactions WHERE guild_id = ? AND to_user_id = ?').run(guildId, userId)
+  db.prepare('DELETE FROM daily_claims WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+}

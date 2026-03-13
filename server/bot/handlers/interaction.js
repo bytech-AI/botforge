@@ -7,6 +7,7 @@ import { handleBalance } from '../commands/balance.js'
 import { handleEconomy } from '../commands/economy.js'
 import { handleGacha } from '../commands/gacha.js'
 import { handleRanking, handleRank, handleRpRanking, handleSeason } from '../commands/ranking.js'
+import { handleShop, handleBuy } from '../commands/shop.js'
 
 // ビルトインコマンドのMap: コマンド名 → ハンドラー関数
 const builtinCommands = new Map()
@@ -44,6 +45,12 @@ function initBuiltinCommands() {
         handleRpRanking(interaction, dbHelpers))
     builtinCommands.set('season', (interaction, dbHelpers) =>
         handleSeason(interaction, dbHelpers))
+
+    // shop.js: shop, buy
+    builtinCommands.set('shop', (interaction, dbHelpers) =>
+        handleShop(interaction, dbHelpers))
+    builtinCommands.set('buy', (interaction, dbHelpers) =>
+        handleBuy(interaction, dbHelpers))
 }
 
 // 初期化

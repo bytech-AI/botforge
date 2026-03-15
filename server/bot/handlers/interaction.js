@@ -51,6 +51,10 @@ function initBuiltinCommands() {
         handleShop(interaction, dbHelpers))
     builtinCommands.set('buy', (interaction, dbHelpers) =>
         handleBuy(interaction, dbHelpers))
+
+    // balance.js: mypoints（統合ビュー）
+    builtinCommands.set('mypoints', (interaction, dbHelpers) =>
+        handleBalance(interaction, dbHelpers, 'mypoints'))
 }
 
 // 初期化

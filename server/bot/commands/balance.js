@@ -98,6 +98,72 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
             break
         }
 
+        case 'mypoints': {
+            // ポイント残高 + ランク + 直近履歴を1画面にまとめた統合ビュー
+            const user = interaction.user
+            const member = dbHelpers.getOrCreateMember(
+                guildId, user.id, user.username,
+                user.username, user.displayAvatarURL({ size: 32 })
+            )
+            const rank = dbHelpers.getUserRank(guildId, user.id)
+            const rankInfo = dbHelpers.getMemberRank(guildId, user.id)
+            const history = dbHelpers.getTransactionHistory(guildId, user.id, 5)
+
+            // RP進捗を1行で表示
+            let rpLine
+            if (rankInfo.is_x_rank && rankInfo.x_rp !== null) {
+                const pct = rankInfo.x_max_rp > 0 ? Math.min(100, Math.floor((rankInfo.x_rp / rankInfo.x_max_rp) * 100)) : 100
+                const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10))
+                rpLine = `${bar} ${rankInfo.x_rp.toLocaleString()}/${rankInfo.x_max_rp.toLocaleString()} XP (${pct}%)`
+            } else if (rankInfo.is_max_rank) {
+                rpLine = '█'.repeat(10) + ` ${rankInfo.current_rp.toLocaleString()} RP — MAX`
+            } else {
+                const range = rankInfo.next_rp_threshold - rankInfo.rp_threshold
+                const progress = rankInfo.current_rp - rankInfo.rp_threshold
+                const pct = range > 0 ? Math.min(100, Math.floor((progress / range) * 100)) : 100
+                const bar = '█'.repeat(Math.floor(pct / 10)) + '░'.repeat(10 - Math.floor(pct / 10))
+                rpLine = `${bar} ${rankInfo.current_rp.toLocaleString()}/${rankInfo.next_rp_threshold.toLocaleString()} RP (${pct}%)`
+            }
+
+            // 直近の履歴
+            let historyLines = '取引履歴がありません'
+            if (history.length > 0) {
+                historyLines = history.map(t => {
+                    const time = new Date(t.created_at).toLocaleString('ja-JP', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    const sign = t.amount >= 0 ? '+' : ''
+                    const emoji = t.type === 'earn' ? '⬆️' : t.type === 'transfer' ? '💸' : t.type === 'daily' ? '🎁' : t.type === 'reward' ? '🛒' : t.type === 'ai_scoring' ? '🤖' : '📝'
+                    return `${emoji} \`${time}\` ${sign}**${t.amount.toLocaleString()}**pt — ${t.description || t.type}`
+                }).join('\n')
+            }
+
+            // 活動サマリー
+            const totalActivity = member.messages + member.reactions + member.voice_minutes
+            let activityBreakdown = '活動記録なし'
+            if (totalActivity > 0) {
+                const msgPct = Math.round((member.messages / Math.max(1, totalActivity)) * 100)
+                const reactPct = Math.round((member.reactions / Math.max(1, totalActivity)) * 100)
+                const voicePct = 100 - msgPct - reactPct
+                activityBreakdown = `💬 ${member.messages.toLocaleString()} (${msgPct}%) ⭐ ${member.reactions.toLocaleString()} (${reactPct}%) 🎤 ${member.voice_minutes.toLocaleString()}分 (${voicePct}%)`
+            }
+
+            const embed = new EmbedBuilder()
+                .setColor(parseInt((rankInfo.color || '#7c5cfc').replace('#', ''), 16))
+                .setAuthor({ name: `${user.username} のマイポイント`, iconURL: user.displayAvatarURL({ size: 32 }) })
+                .addFields(
+                    { name: `${rankInfo.icon} ${rankInfo.rank_label}`, value: rpLine, inline: false },
+                    { name: '💎 ポイント', value: `**${Math.floor(member.total_points).toLocaleString()}** pt`, inline: true },
+                    { name: '🏆 順位', value: `#${rank}`, inline: true },
+                    { name: '🔥 連続', value: `${member.streak_days}日`, inline: true },
+                    { name: '📊 活動内訳', value: activityBreakdown, inline: false },
+                    { name: '📜 最近の獲得・消費', value: historyLines, inline: false },
+                )
+                .setFooter({ text: `累計: ${Math.floor(member.total_earned || 0).toLocaleString()}pt | /history で詳細表示` })
+                .setTimestamp()
+
+            await interaction.reply({ embeds: [embed], ephemeral: true })
+            break
+        }
+
         case 'actions': {
             const rules = getPointRules().filter(r => r.enabled)
 

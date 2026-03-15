@@ -215,12 +215,17 @@ export function updateEconomySettings(guildId, settings) {
   const db = getDb()
   db.prepare(`UPDATE point_economy_settings SET
     transfer_fee_percent = ?, min_transfer_amount = ?, daily_transfer_limit = ?,
-    daily_bonus_amount = ?, daily_bonus_streak_multiplier = ?, max_daily_bonus = ?, enabled = ?
+    daily_bonus_amount = ?, daily_bonus_streak_multiplier = ?, max_daily_bonus = ?, enabled = ?,
+    voice_min_members = ?,
+    voice_require_activity = ?, voice_activity_timeout_minutes = ?
     WHERE guild_id = ?`
   ).run(
     settings.transfer_fee_percent, settings.min_transfer_amount, settings.daily_transfer_limit,
     settings.daily_bonus_amount, settings.daily_bonus_streak_multiplier, settings.max_daily_bonus,
-    settings.enabled ? 1 : 0, guildId
+    settings.enabled ? 1 : 0,
+    settings.voice_min_members ?? 2,
+    settings.voice_require_activity ? 1 : 0, settings.voice_activity_timeout_minutes ?? 30,
+    guildId
   )
   return getEconomySettings(guildId)
 }

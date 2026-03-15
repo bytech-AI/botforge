@@ -45,7 +45,7 @@ import {
     getAiScoringSettings, updateAiScoringSettings,
     getScoringHistory, getScoringStats,
 } from './db.js'
-import { encryptSecret } from './bot.js'
+import { encryptSecret, setVoiceDebugMode, getVoiceDebugMode, getVoiceDebugLog, clearVoiceDebugLog } from './bot.js'
 import cron from 'node-cron'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -792,6 +792,29 @@ app.get('/api/ai-scoring/stats', requireGuildId, (req, res, next) => {
     try {
         res.json(getScoringStats(req.query.guildId))
     } catch (err) { next(err) }
+})
+
+// ============================
+// Voice Debug API
+// ============================
+
+app.get('/api/voice-debug/status', (req, res) => {
+    res.json({ enabled: getVoiceDebugMode() })
+})
+
+app.post('/api/voice-debug/toggle', (req, res) => {
+    const enabled = !!req.body.enabled
+    setVoiceDebugMode(enabled)
+    res.json({ enabled })
+})
+
+app.get('/api/voice-debug/log', (req, res) => {
+    res.json(getVoiceDebugLog())
+})
+
+app.post('/api/voice-debug/clear', (req, res) => {
+    clearVoiceDebugLog()
+    res.json({ success: true })
 })
 
 // ============================

@@ -4,7 +4,11 @@ import { AppContext } from '../App'
 export default function RankSystem() {
     const { showToast, selectedGuild, botStatus, guilds } = useContext(AppContext)
     const currentGuild = guilds.find(g => g.id === selectedGuild)
-    const [activeTab, setActiveTab] = useState('config')
+    const [activeTab, setActiveTab] = useState(() => {
+        try { return localStorage.getItem('tab_rankSystem') || 'config' } catch { return 'config' }
+    })
+
+    useEffect(() => { try { localStorage.setItem('tab_rankSystem', activeTab) } catch {} }, [activeTab])
 
     // ランク設定
     const [ranks, setRanks] = useState([])

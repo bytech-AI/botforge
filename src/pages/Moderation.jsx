@@ -1,8 +1,10 @@
 import { useState, useContext, useEffect } from 'react'
 import { AppContext } from '../App'
+import ChannelSelector from '../components/ChannelSelector'
 
 export default function Moderation() {
-    const { showToast, selectedGuild } = useContext(AppContext)
+    const { showToast, selectedGuild, guilds } = useContext(AppContext)
+    const currentGuild = guilds.find(g => g.id === selectedGuild)
     const [settings, setSettings] = useState({
         ngWordEnabled: true,
         ngWords: [],
@@ -248,10 +250,15 @@ export default function Moderation() {
                     <div className="card">
                         <div className="card-header"><h2>📋 ログチャンネル</h2></div>
                         <div className="form-group">
-                            <label className="form-label">モデレーションログの送信先チャンネルID</label>
-                            <input className="form-input" placeholder="チャンネルIDを入力..."
-                                value={settings.logChannelId}
-                                onChange={e => setSettings({ ...settings, logChannelId: e.target.value })} />
+                            <label className="form-label">モデレーションログの送信先チャンネル</label>
+                            <ChannelSelector
+                                channels={currentGuild?.channels || []}
+                                categories={currentGuild?.categories || []}
+                                mode="dropdown"
+                                selectedId={settings.logChannelId}
+                                onChangeSingle={id => setSettings({ ...settings, logChannelId: id })}
+                                placeholder="チャンネルを選択..."
+                            />
                         </div>
                     </div>
 

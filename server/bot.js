@@ -12,6 +12,7 @@ import * as dbModule from './db.js'
 import { setupMessageHandler } from './bot/handlers/message.js'
 import { setupReactionHandler } from './bot/handlers/reaction.js'
 import { setupVoiceHandler } from './bot/handlers/voice.js'
+export { setVoiceDebugMode, getVoiceDebugMode, getVoiceDebugLog, clearVoiceDebugLog } from './bot/handlers/voice.js'
 import { setupInteractionHandler } from './bot/handlers/interaction.js'
 import { startScoringWorker } from './bot/handlers/ai-scoring.js'
 

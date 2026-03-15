@@ -7,6 +7,7 @@ import { checkCooldown } from '../points/cooldown.js'
 import { earnPoints } from '../points/earning.js'
 import { checkMessage } from './moderation.js'
 import { enqueueForScoring } from './ai-scoring.js'
+import { recordMessageActivity } from './voice.js'
 
 /**
  * MessageCreateイベントハンドラーを登録する
@@ -17,6 +18,9 @@ import { enqueueForScoring } from './ai-scoring.js'
 export function setupMessageHandler(client, dbHelpers, getPointRules) {
     client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot || !message.guild) return
+
+        // ボイスチャンネルのアクティビティ追跡用
+        recordMessageActivity(message.guild.id, message.author.id)
 
         // モデレーションチェック（ブロックされた場合はポイント付与・自動応答をスキップ）
         try {

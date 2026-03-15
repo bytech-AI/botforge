@@ -1,5 +1,6 @@
 import { useState, useContext, useEffect } from 'react'
 import { AppContext } from '../App'
+import ChannelSelector from '../components/ChannelSelector'
 
 export default function PointSystem() {
     const { showToast, selectedGuild, botStatus, guilds } = useContext(AppContext)
@@ -38,7 +39,11 @@ export default function PointSystem() {
         { id: 3, type: 'event', label: 'イベントボーナス', description: '期間限定ポイント2倍', bonus: 0, enabled: false },
     ])
 
-    const [activeTab, setActiveTab] = useState('rules')
+    const [activeTab, setActiveTab] = useState(() => {
+        try { return localStorage.getItem('tab_pointSystem') || 'rules' } catch { return 'rules' }
+    })
+
+    useEffect(() => { try { localStorage.setItem('tab_pointSystem', activeTab) } catch {} }, [activeTab])
 
     // Fetch rules from API
     useEffect(() => {
@@ -333,6 +338,63 @@ export default function PointSystem() {
                                 </div>
                             </div>
 
+                            {/* Voice Anti-Abuse Settings */}
+                            <div className="card">
+                                <div className="card-header">
+                                    <h2>🎤 ボイスポイント不正対策</h2>
+                                </div>
+                                <div className="grid-2">
+                                    <div className="form-group">
+                                        <label className="form-label">最低参加人数</label>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                            <input type="range" min="2" max="10" value={economy.voice_min_members || 2}
+                                                onChange={e => setEconomy({ ...economy, voice_min_members: parseInt(e.target.value) })}
+                                                style={{ flex: 1 }} />
+                                            <span style={{ fontWeight: 700, minWidth: '40px', textAlign: 'right' }}>
+                                                {economy.voice_min_members || 2}人
+                                            </span>
+                                        </div>
+                                        <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                            ミュート解除済みのメンバーがこの人数以上いないとポイントが付与されません
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <div className="toggle-wrapper">
+                                        <div>
+                                            <h4 style={{ fontSize: '0.9rem' }}>💬 アクティビティ要件</h4>
+                                            <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>
+                                                テキストチャンネルでメッセージを送信していないとボイスポイントを付与しない
+                                            </p>
+                                        </div>
+                                        <label className="toggle">
+                                            <input type="checkbox" checked={!!economy.voice_require_activity}
+                                                onChange={e => setEconomy({ ...economy, voice_require_activity: e.target.checked })} />
+                                            <span className="toggle-slider"></span>
+                                        </label>
+                                    </div>
+                                </div>
+                                {economy.voice_require_activity && (
+                                    <div className="form-group">
+                                        <label className="form-label">アクティビティタイムアウト（分）</label>
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)' }}>
+                                            <input type="range" min="5" max="120" step="5" value={economy.voice_activity_timeout_minutes || 30}
+                                                onChange={e => setEconomy({ ...economy, voice_activity_timeout_minutes: parseInt(e.target.value) })}
+                                                style={{ flex: 1 }} />
+                                            <span style={{ fontWeight: 700, minWidth: '50px', textAlign: 'right' }}>
+                                                {economy.voice_activity_timeout_minutes || 30}分
+                                            </span>
+                                        </div>
+                                        <p style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', marginTop: '4px' }}>
+                                            最後のメッセージ送信からこの時間が経過すると「非アクティブ」と判定されます
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Voice Debug */}
+                            <VoiceDebugPanel />
+
                             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                                 <button className="btn btn-primary btn-lg" onClick={saveEconomy}>
                                     💾 経済設定を保存
@@ -509,10 +571,13 @@ export default function PointSystem() {
                                     <div className="card" style={{ padding: 'var(--spacing-md)' }}>
                                         <div className="form-group" style={{ marginBottom: 0 }}>
                                             <label className="form-label">チャンネルを追加</label>
-                                            <select className="form-input" style={{ cursor: 'pointer' }}
-                                                value=""
-                                                onChange={e => {
-                                                    const ch = available.find(c => c.id === e.target.value)
+                                            <ChannelSelector
+                                                channels={currentGuild.channels}
+                                                categories={currentGuild.categories || []}
+                                                mode="dropdown"
+                                                selectedId=""
+                                                onChangeSingle={id => {
+                                                    const ch = currentGuild.channels.find(c => c.id === id)
                                                     if (ch) {
                                                         setChannelMultipliers([...channelMultipliers, {
                                                             id: Date.now(),
@@ -521,12 +586,10 @@ export default function PointSystem() {
                                                             multiplier: 1
                                                         }])
                                                     }
-                                                }}>
-                                                <option value="">チャンネルを選択...</option>
-                                                {available.map(ch => (
-                                                    <option key={ch.id} value={ch.id}>#{ch.name}</option>
-                                                ))}
-                                            </select>
+                                                }}
+                                                excludeIds={usedIds}
+                                                placeholder="チャンネルを選択..."
+                                            />
                                         </div>
                                     </div>
                                 )
@@ -799,6 +862,117 @@ export default function PointSystem() {
                         }}>
                         💾 すべての設定を保存
                     </button>
+                </div>
+            )}
+        </div>
+    )
+}
+
+/**
+ * ボイスポイントのデバッグログパネル
+ */
+function VoiceDebugPanel() {
+    const [debugEnabled, setDebugEnabled] = useState(false)
+    const [logs, setLogs] = useState([])
+    const [loading, setLoading] = useState(false)
+
+    useEffect(() => {
+        fetch('/api/voice-debug/status').then(r => r.json())
+            .then(data => setDebugEnabled(data.enabled)).catch(() => {})
+    }, [])
+
+    const toggleDebug = async () => {
+        const newState = !debugEnabled
+        await fetch('/api/voice-debug/toggle', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled: newState })
+        })
+        setDebugEnabled(newState)
+        if (!newState) setLogs([])
+    }
+
+    const fetchLogs = async () => {
+        setLoading(true)
+        try {
+            const data = await fetch('/api/voice-debug/log').then(r => r.json())
+            setLogs(data)
+        } catch { }
+        setLoading(false)
+    }
+
+    const clearLogs = async () => {
+        await fetch('/api/voice-debug/clear', { method: 'POST' })
+        setLogs([])
+    }
+
+    return (
+        <div className="card" style={{ borderColor: debugEnabled ? 'rgba(255, 179, 71, 0.3)' : undefined }}>
+            <div className="card-header">
+                <h2>🔍 ボイスデバッグログ</h2>
+                <label className="toggle">
+                    <input type="checkbox" checked={debugEnabled} onChange={toggleDebug} />
+                    <span className="toggle-slider"></span>
+                </label>
+            </div>
+            {debugEnabled && (
+                <div style={{ padding: 'var(--spacing-md)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                    <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)' }}>
+                        ONにすると毎分のボイスチャンネル判定結果を記録します。テスト後はOFFにしてください。
+                    </p>
+                    <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                        <button className="btn btn-primary btn-sm" onClick={fetchLogs} disabled={loading}>
+                            {loading ? '取得中...' : 'ログを取得'}
+                        </button>
+                        <button className="btn btn-secondary btn-sm" onClick={clearLogs}>クリア</button>
+                        <span style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', alignSelf: 'center' }}>
+                            {logs.length}件
+                        </span>
+                    </div>
+                    {logs.length > 0 && (
+                        <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+                            {logs.slice().reverse().map((entry, i) => (
+                                <div key={i} style={{
+                                    padding: 'var(--spacing-sm) var(--spacing-md)',
+                                    marginBottom: '4px',
+                                    background: entry.awarded ? 'rgba(74, 222, 128, 0.06)' : 'rgba(255, 107, 107, 0.06)',
+                                    border: `1px solid ${entry.awarded ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255, 107, 107, 0.15)'}`,
+                                    borderRadius: 'var(--radius-sm)',
+                                    fontSize: '0.82rem',
+                                }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                                        <span style={{ fontWeight: 600 }}>#{entry.channel}</span>
+                                        <span style={{ color: 'var(--text-tertiary)', fontSize: '0.75rem' }}>
+                                            {new Date(entry.timestamp).toLocaleTimeString('ja-JP')}
+                                        </span>
+                                    </div>
+                                    <div style={{ marginBottom: '4px', color: 'var(--text-secondary)' }}>
+                                        全{entry.total}人 / 対象{entry.eligible}人 (最低{entry.minRequired}人必要)
+                                        {entry.awarded
+                                            ? <span style={{ color: 'var(--accent-success)', fontWeight: 600 }}> → ポイント付与</span>
+                                            : <span style={{ color: 'var(--accent-danger)', fontWeight: 600 }}> → 条件未達</span>
+                                        }
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                        {entry.members.map((m, j) => (
+                                            <span key={j} style={{
+                                                padding: '2px 8px', borderRadius: 'var(--radius-full)',
+                                                fontSize: '0.75rem', fontWeight: 500,
+                                                background: m.eligible ? 'rgba(74, 222, 128, 0.15)' : 'rgba(255, 107, 107, 0.15)',
+                                                color: m.eligible ? 'var(--accent-success)' : 'var(--accent-danger)',
+                                            }}>
+                                                {m.username}
+                                                {!m.eligible && (
+                                                    <span style={{ opacity: 0.7 }}>
+                                                        ({[m.selfMute && 'ミュート', m.selfDeaf && 'デフ', m.serverMute && 'サバミュ', m.serverDeaf && 'サバデフ'].filter(Boolean).join(',')})
+                                                    </span>
+                                                )}
+                                            </span>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

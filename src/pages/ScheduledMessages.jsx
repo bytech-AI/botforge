@@ -1,5 +1,6 @@
 import { useState, useEffect, useContext } from 'react'
 import { AppContext } from '../App'
+import ChannelSelector from '../components/ChannelSelector'
 
 const dayLabels = ['月', '火', '水', '木', '金', '土', '日']
 
@@ -23,7 +24,8 @@ function deserialize(row) {
 }
 
 export default function ScheduledMessages() {
-    const { showToast, selectedGuild } = useContext(AppContext)
+    const { showToast, selectedGuild, guilds } = useContext(AppContext)
+    const currentGuild = guilds.find(g => g.id === selectedGuild)
     const [schedules, setSchedules] = useState([])
     const [loading, setLoading] = useState(false)
     const [showModal, setShowModal] = useState(false)
@@ -252,9 +254,15 @@ export default function ScheduledMessages() {
                         </div>
 
                         <div className="form-group">
-                            <label className="form-label">送信チャンネルID</label>
-                            <input className="form-input" placeholder="チャンネルIDを入力..."
-                                value={form.channelId} onChange={e => setForm({ ...form, channelId: e.target.value })} />
+                            <label className="form-label">送信チャンネル</label>
+                            <ChannelSelector
+                                channels={currentGuild?.channels || []}
+                                categories={currentGuild?.categories || []}
+                                mode="dropdown"
+                                selectedId={form.channelId}
+                                onChangeSingle={id => setForm({ ...form, channelId: id })}
+                                placeholder="チャンネルを選択..."
+                            />
                         </div>
 
                         <div className="form-group">

@@ -251,10 +251,15 @@ export function getGuilds() {
     icon: g.iconURL({ size: 64 }),
     memberCount: g.memberCount,
     ownerId: g.ownerId,
+    categories: g.channels.cache
+      .filter(c => c.type === 4)
+      .sort((a, b) => a.rawPosition - b.rawPosition)
+      .map(c => ({ id: c.id, name: c.name })),
     channels: g.channels.cache
       .filter(c => c.type === 0)
-      .map(c => ({ id: c.id, name: c.name }))
-      .slice(0, 50),
+      .sort((a, b) => a.rawPosition - b.rawPosition)
+      .map(c => ({ id: c.id, name: c.name, parentId: c.parentId || null }))
+      .slice(0, 200),
     roles: g.roles.cache
       .filter(r => r.name !== '@everyone')
       .map(r => ({ id: r.id, name: r.name, color: r.hexColor }))

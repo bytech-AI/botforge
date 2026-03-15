@@ -1,5 +1,6 @@
 import { useState, useContext, useEffect } from 'react'
 import { AppContext } from '../App'
+import ChannelSelector from '../components/ChannelSelector'
 
 const DEFAULT_PROMPT = `あなたはDiscordサーバーのメッセージ品質採点者です。
 以下のメッセージを1〜10のスケールで採点してください。
@@ -53,7 +54,11 @@ export default function AiScoring() {
     const [apiKeyInput, setApiKeyInput] = useState('')
     const [history, setHistory] = useState([])
     const [stats, setStats] = useState({ totalScored: 0, averageScore: 0, totalRpAwarded: 0, todayCount: 0 })
-    const [activeTab, setActiveTab] = useState('basic')
+    const [activeTab, setActiveTab] = useState(() => {
+        try { return localStorage.getItem('tab_aiScoring') || 'basic' } catch { return 'basic' }
+    })
+
+    useEffect(() => { try { localStorage.setItem('tab_aiScoring', activeTab) } catch {} }, [activeTab])
 
     // データ取得
     useEffect(() => {
@@ -140,14 +145,6 @@ export default function AiScoring() {
                 i === index ? { ...t, [field]: parseInt(value) || 0 } : t
             ),
         })
-    }
-
-    // チャンネル選択トグル
-    const toggleChannel = (channelId) => {
-        const channels = settings.channels.includes(channelId)
-            ? settings.channels.filter(id => id !== channelId)
-            : [...settings.channels, channelId]
-        setSettings({ ...settings, channels })
     }
 
     const models = settings.provider === 'anthropic' ? ANTHROPIC_MODELS : OPENAI_MODELS
@@ -267,6 +264,36 @@ export default function AiScoring() {
                         </div>
                     </div>
 
+                    <div className="card">
+                        <div className="card-header">
+                            <h3>通知・ログ</h3>
+                        </div>
+                        <div style={{ padding: 'var(--spacing-md)', display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                            <div>
+                                <label className="form-label">通知モード</label>
+                                <select className="form-input" value={settings.notifyMode}
+                                    onChange={e => setSettings({ ...settings, notifyMode: e.target.value })}>
+                                    <option value="none">通知なし</option>
+                                    <option value="low_only">低品質のみ通知</option>
+                                    <option value="all">全件通知</option>
+                                </select>
+                            </div>
+                            {settings.notifyMode !== 'none' && (
+                                <div>
+                                    <label className="form-label">ログ送信チャンネル</label>
+                                    <ChannelSelector
+                                        channels={currentGuild?.channels || []}
+                                        categories={currentGuild?.categories || []}
+                                        mode="dropdown"
+                                        selectedId={settings.logChannelId}
+                                        onChangeSingle={id => setSettings({ ...settings, logChannelId: id })}
+                                        placeholder="チャンネルを選択..."
+                                    />
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
                     <button className="btn btn-primary" onClick={saveSettings}
                         style={{ alignSelf: 'flex-start' }}>
                         保存
@@ -309,31 +336,14 @@ export default function AiScoring() {
                                     <label className="form-label">
                                         {settings.channelMode === 'whitelist' ? '採点するチャンネル' : '除外するチャンネル'}
                                     </label>
-                                    <div style={{
-                                        maxHeight: '200px', overflowY: 'auto',
-                                        border: '1px solid var(--border)', borderRadius: '8px',
-                                        padding: 'var(--spacing-sm)'
-                                    }}>
-                                        {currentGuild?.channels?.length > 0 ? (
-                                            currentGuild.channels
-                                                .map(ch => (
-                                                    <label key={ch.id} style={{
-                                                        display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)',
-                                                        padding: '6px 8px', borderRadius: '4px', cursor: 'pointer'
-                                                    }}>
-                                                        <input type="checkbox"
-                                                            checked={settings.channels.includes(ch.id)}
-                                                            onChange={() => toggleChannel(ch.id)} />
-                                                        <span style={{ color: 'var(--text-secondary)' }}>#</span>
-                                                        <span>{ch.name}</span>
-                                                    </label>
-                                                ))
-                                        ) : (
-                                            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', padding: '8px' }}>
-                                                チャンネル情報を取得できません
-                                            </p>
-                                        )}
-                                    </div>
+                                    <ChannelSelector
+                                        channels={currentGuild?.channels || []}
+                                        categories={currentGuild?.categories || []}
+                                        mode="multi"
+                                        selectedIds={settings.channels}
+                                        onChangeMulti={ids => setSettings({ ...settings, channels: ids })}
+                                        storageKey="aiScoring_channels"
+                                    />
                                 </div>
                             )}
                         </div>

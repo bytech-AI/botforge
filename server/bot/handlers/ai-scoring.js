@@ -3,7 +3,8 @@
  * メッセージをキューに入れ、バックグラウンドでAI APIを呼んで採点する
  */
 
-import { decryptSecret } from '../client.js'
+import { decryptSecret, getClient } from '../client.js'
+import { EmbedBuilder } from 'discord.js'
 
 // In-memory queue: array of { guildId, userId, channelId, messageId, content }
 const scoringQueue = []
@@ -149,6 +150,47 @@ async function processScoring(item, dbHelpers) {
     item.guildId, item.userId, item.channelId, item.messageId,
     item.content.substring(0, 200), clampedScore, reason, rpAwarded
   )
+
+  // ログチャンネルへ通知
+  await sendScoringNotification(settings, item, clampedScore, reason, rpAwarded)
+}
+
+/**
+ * 採点結果をログチャンネルに送信する
+ */
+async function sendScoringNotification(settings, item, score, reason, rpAwarded) {
+  if (settings.notifyMode === 'none') return
+  if (settings.notifyMode === 'low_only' && score > settings.lowQualityThreshold) return
+  if (!settings.logChannelId) return
+
+  const client = getClient()
+  if (!client) return
+
+  try {
+    const channel = await client.channels.fetch(settings.logChannelId)
+    if (!channel) return
+
+    const scoreColor = score <= 3 ? 0xed4245 : score <= 6 ? 0xfee75c : 0x57f287
+    const embed = new EmbedBuilder()
+      .setTitle('AI採点結果')
+      .setColor(scoreColor)
+      .addFields(
+        { name: 'スコア', value: `${score}/10`, inline: true },
+        { name: 'RP付与', value: rpAwarded > 0 ? `+${rpAwarded}` : '-', inline: true },
+        { name: 'チャンネル', value: `<#${item.channelId}>`, inline: true },
+        { name: 'ユーザー', value: `<@${item.userId}>`, inline: true },
+        { name: '理由', value: reason.substring(0, 200) || '不明' },
+      )
+      .setTimestamp()
+
+    if (item.content) {
+      embed.setDescription(item.content.substring(0, 300))
+    }
+
+    await channel.send({ embeds: [embed] })
+  } catch (err) {
+    console.error('AI scoring notification error:', err.message)
+  }
 }
 
 /**

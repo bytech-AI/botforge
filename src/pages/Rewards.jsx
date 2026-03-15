@@ -17,8 +17,11 @@ export default function Rewards() {
     const [form, setForm] = useState({
         name: '', type: 'role', icon: '🎁', cost: 100, roleId: '', description: '', stock: -1, enabled: true
     })
-    const [activeTab, setActiveTab] = useState('list')
+    const [activeTab, setActiveTab] = useState(() => {
+        try { return localStorage.getItem('tab_rewards') || 'list' } catch { return 'list' }
+    })
     const [exchangeHistory, setExchangeHistory] = useState([])
+    useEffect(() => { try { localStorage.setItem('tab_rewards', activeTab) } catch {} }, [activeTab])
 
     const currentGuild = guilds.find(g => g.id === selectedGuild)
 

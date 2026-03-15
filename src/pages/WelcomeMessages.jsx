@@ -1,8 +1,10 @@
 import { useState, useEffect, useContext } from 'react'
 import { AppContext } from '../App'
+import ChannelSelector from '../components/ChannelSelector'
 
 export default function WelcomeMessages() {
-    const { showToast, selectedGuild } = useContext(AppContext)
+    const { showToast, selectedGuild, guilds } = useContext(AppContext)
+    const currentGuild = guilds.find(g => g.id === selectedGuild)
     const [loading, setLoading] = useState(false)
     const [welcome, setWelcome] = useState({
         enabled: true,
@@ -113,10 +115,15 @@ export default function WelcomeMessages() {
                     </div>
 
                     <div className="form-group">
-                        <label className="form-label">送信チャンネルID</label>
-                        <input className="form-input" placeholder="チャンネルIDを入力..."
-                            value={welcome.channelId}
-                            onChange={e => setWelcome({ ...welcome, channelId: e.target.value })} />
+                        <label className="form-label">送信チャンネル</label>
+                        <ChannelSelector
+                            channels={currentGuild?.channels || []}
+                            categories={currentGuild?.categories || []}
+                            mode="dropdown"
+                            selectedId={welcome.channelId}
+                            onChangeSingle={id => setWelcome({ ...welcome, channelId: id })}
+                            placeholder="チャンネルを選択..."
+                        />
                     </div>
 
                     <div className="form-group">
@@ -217,10 +224,15 @@ export default function WelcomeMessages() {
                         </div>
 
                         <div className="form-group">
-                            <label className="form-label">送信チャンネルID</label>
-                            <input className="form-input" placeholder="チャンネルIDを入力..."
-                                value={leave.channelId}
-                                onChange={e => setLeave({ ...leave, channelId: e.target.value })} />
+                            <label className="form-label">送信チャンネル</label>
+                            <ChannelSelector
+                                channels={currentGuild?.channels || []}
+                                categories={currentGuild?.categories || []}
+                                mode="dropdown"
+                                selectedId={leave.channelId}
+                                onChangeSingle={id => setLeave({ ...leave, channelId: id })}
+                                placeholder="チャンネルを選択..."
+                            />
                         </div>
 
                         <div className="form-group">

@@ -14,6 +14,28 @@ const warningCounts = new Map()
 // URL検出用の正規表現
 const URL_REGEX = /https?:\/\/[^\s<>]+/gi
 
+// メモリリーク防止: 定期的に古いエントリをクリーンアップ（10分ごと）
+const CLEANUP_INTERVAL_MS = 10 * 60 * 1000
+const STALE_ENTRY_MS = 30 * 60 * 1000 // 30分間活動なしのエントリを削除
+
+setInterval(() => {
+    const now = Date.now()
+    // 空または古いタイムスタンプのエントリを削除
+    for (const [key, timestamps] of messageTimestamps) {
+        const recent = timestamps.filter(t => now - t < STALE_ENTRY_MS)
+        if (recent.length === 0) {
+            messageTimestamps.delete(key)
+        } else {
+            messageTimestamps.set(key, recent)
+        }
+    }
+    // 警告カウントは24時間後にクリア（最終更新から）
+    // ※ warningCountsには更新時刻がないため、サイズ上限で制御
+    if (warningCounts.size > 10000) {
+        warningCounts.clear()
+    }
+}, CLEANUP_INTERVAL_MS)
+
 /**
  * 警告カウントのキーを生成する
  * @param {string} guildId
@@ -128,14 +150,16 @@ function checkCaps(content, threshold) {
  * @param {import('discord.js').Message} message
  * @param {string} action - 実行するアクション
  * @param {string} reason - アクションの理由
+ * @param {string} publicReason - チャンネルに表示する理由（NGワードを含まない）
  */
-async function executeAction(message, action, reason) {
+async function executeAction(message, action, reason, publicReason) {
+    const displayReason = publicReason || reason
     try {
         switch (action) {
             case 'delete_warn':
                 await message.delete().catch(() => {})
                 await message.channel.send(
-                    `${message.author} 警告: ${reason}`
+                    `${message.author} 警告: ${displayReason}`
                 ).catch(() => {})
                 break
             case 'delete':
@@ -255,14 +279,16 @@ export async function checkMessage(message, dbHelpers) {
     if (settings.ngWordEnabled && settings.ngWords && settings.ngWords.length > 0) {
         const matched = checkNgWords(content, settings.ngWords)
         if (matched) {
-            const reason = `NGワード検出: "${matched}"`
+            // ログには詳細を記録、チャンネルにはNGワードを表示しない
+            const logReason = `NGワード検出: "${matched}"`
+            const publicReason = '禁止ワードが含まれています'
             const action = settings.action || 'delete_warn'
-            await executeAction(message, action, reason)
-            await sendLog(message, settings.logChannelId, reason, action)
+            await executeAction(message, action, logReason, publicReason)
+            await sendLog(message, settings.logChannelId, logReason, action)
             if (action === 'delete_warn') {
                 await handleWarningLimit(message, settings)
             }
-            return { blocked: true, reason }
+            return { blocked: true, reason: logReason }
         }
     }
 

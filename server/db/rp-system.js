@@ -355,72 +355,74 @@ export function addRp(guildId, userId, amount, source, description = '') {
   const db = getDb()
   getMemberRank(guildId, userId)
 
-  const beforeRow = db.prepare('SELECT current_rp, current_rank_key, x_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
-  const previousRankKey = beforeRow.current_rank_key
   const config = getRankConfig(guildId)
   const xConfig = getXRankConfig(guildId)
-
-  // Xランク判定用の閾値を取得
   const xRankConfig = config.find(r => r.rank_key === 'x')
   const xThreshold = xRankConfig ? (xRankConfig.rp_threshold ?? 0) : Infinity
 
-  let newRp = beforeRow.current_rp
-  let newXRp = beforeRow.x_rp
-  let newRankKey
+  // トランザクションで囲んでレースコンディションを防止
+  const tx = db.transaction(() => {
+    const beforeRow = db.prepare('SELECT current_rp, current_rank_key, x_rp FROM member_ranks WHERE guild_id = ? AND user_id = ?').get(guildId, userId)
+    const previousRankKey = beforeRow.current_rank_key
 
-  if (beforeRow.current_rank_key === 'x' && beforeRow.x_rp !== null) {
-    // === Xランク中: x_rpに加算 ===
-    newXRp = Math.max(0, Math.min((beforeRow.x_rp || 0) + amount, xConfig.max_rp))
+    let newRp = beforeRow.current_rp
+    let newXRp = beforeRow.x_rp
+    let newRankKey
 
-    // 降格チェック: x_rp <= demotion_threshold で S+ に降格
-    if (newXRp <= xConfig.demotion_threshold) {
-      // S+に降格: 累積RPをX閾値の1つ下に設定、x_rpをクリア
-      const s_plus = config.find(r => r.rank_key === 's_plus')
-      newRp = xThreshold - 1
-      newXRp = null
-      newRankKey = s_plus ? s_plus.rank_key : resolveRank(config, newRp).rank.rank_key
+    if (beforeRow.current_rank_key === 'x' && beforeRow.x_rp !== null) {
+      // === Xランク中: x_rpに加算 ===
+      newXRp = Math.max(0, Math.min((beforeRow.x_rp || 0) + amount, xConfig.max_rp))
+
+      // 降格チェック: x_rp <= demotion_threshold で S+ に降格
+      if (newXRp <= xConfig.demotion_threshold) {
+        const s_plus = config.find(r => r.rank_key === 's_plus')
+        newRp = xThreshold - 1
+        newXRp = null
+        newRankKey = s_plus ? s_plus.rank_key : resolveRank(config, newRp).rank.rank_key
+      } else {
+        newRankKey = 'x'
+      }
     } else {
-      newRankKey = 'x'
+      // === 通常ランク: 累積RPに加算 ===
+      newRp = Math.max(0, beforeRow.current_rp + amount)
+      const { rank: newRankConfig } = resolveRank(config, newRp)
+      newRankKey = newRankConfig.rank_key
+
+      // Xランク昇格チェック: 累積RPがX閾値に到達
+      if (newRankKey === 'x' && previousRankKey !== 'x') {
+        newXRp = xConfig.entry_rp
+      }
     }
-  } else {
-    // === 通常ランク: 累積RPに加算 ===
-    newRp = Math.max(0, beforeRow.current_rp + amount)
-    const { rank: newRankConfig } = resolveRank(config, newRp)
-    newRankKey = newRankConfig.rank_key
 
-    // Xランク昇格チェック: 累積RPがX閾値に到達
-    if (newRankKey === 'x' && previousRankKey !== 'x') {
-      newXRp = xConfig.entry_rp
+    // DB更新
+    db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, x_rp = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
+      .run(newRp, newRankKey, newXRp, guildId, userId)
+
+    // トランザクション記録
+    db.prepare('INSERT INTO rp_transactions (guild_id, user_id, amount, source, description) VALUES (?, ?, ?, ?, ?)')
+      .run(guildId, userId, amount, source, description)
+
+    // CP倍率はXランクの場合サブティアで決まる
+    let cpMultiplier
+    if (newRankKey === 'x' && newXRp !== null) {
+      cpMultiplier = resolveXCpMultiplier(xConfig, newXRp, xRankConfig?.cp_multiplier ?? 1.75)
+    } else {
+      const { rank } = resolveRank(config, newRp)
+      cpMultiplier = rank.cp_multiplier
     }
-  }
 
-  // DB更新
-  db.prepare('UPDATE member_ranks SET current_rp = ?, current_rank_key = ?, x_rp = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
-    .run(newRp, newRankKey, newXRp, guildId, userId)
-
-  // トランザクション記録
-  db.prepare('INSERT INTO rp_transactions (guild_id, user_id, amount, source, description) VALUES (?, ?, ?, ?, ?)')
-    .run(guildId, userId, amount, source, description)
-
-  // CP倍率はXランクの場合サブティアで決まる
-  let cpMultiplier
-  if (newRankKey === 'x' && newXRp !== null) {
-    cpMultiplier = resolveXCpMultiplier(xConfig, newXRp, xRankConfig?.cp_multiplier ?? 1.75)
-  } else {
-    const { rank } = resolveRank(config, newRp)
-    cpMultiplier = rank.cp_multiplier
-  }
-
-  return {
-    rp_added: amount,
-    current_rp: newRp,
-    x_rp: newXRp,
-    rank_key: newRankKey,
-    rank_label: config.find(r => r.rank_key === newRankKey)?.rank_label || newRankKey,
-    cp_multiplier: cpMultiplier,
-    rank_changed: newRankKey !== previousRankKey,
-    previous_rank_key: previousRankKey,
-  }
+    return {
+      rp_added: amount,
+      current_rp: newRp,
+      x_rp: newXRp,
+      rank_key: newRankKey,
+      rank_label: config.find(r => r.rank_key === newRankKey)?.rank_label || newRankKey,
+      cp_multiplier: cpMultiplier,
+      rank_changed: newRankKey !== previousRankKey,
+      previous_rank_key: previousRankKey,
+    }
+  })
+  return tx()
 }
 
 // --- CP倍率取得 ---
@@ -453,8 +455,8 @@ export function getDailyRpTotal(guildId, userId, source) {
   const result = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM rp_transactions
-    WHERE guild_id = ? AND user_id = ? AND source = ? AND DATE(created_at) = ?
-  `).get(guildId, userId, source, today)
+    WHERE guild_id = ? AND user_id = ? AND source = ? AND created_at >= ? AND created_at < ?
+  `).get(guildId, userId, source, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
   return result.total
 }
 
@@ -714,14 +716,20 @@ export function getSeasonHistory(guildId, limit = 10) {
 
 export function resetAllRanks(guildId) {
   const db = getDb()
-  db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ?").run(guildId)
-  db.prepare('DELETE FROM rp_transactions WHERE guild_id = ?').run(guildId)
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ?").run(guildId)
+    db.prepare('DELETE FROM rp_transactions WHERE guild_id = ?').run(guildId)
+  })
+  tx()
 }
 
 export function resetUserRank(guildId, userId) {
   const db = getDb()
-  db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ? AND user_id = ?").run(guildId, userId)
-  db.prepare('DELETE FROM rp_transactions WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+  const tx = db.transaction(() => {
+    db.prepare("UPDATE member_ranks SET current_rp = 0, current_rank_key = 'c_minus', x_rp = NULL WHERE guild_id = ? AND user_id = ?").run(guildId, userId)
+    db.prepare('DELETE FROM rp_transactions WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+  })
+  tx()
 }
 
 // --- メンテナンス ---
@@ -741,16 +749,20 @@ export function recalculateAllRanks(guildId) {
   const config = getRankConfig(guildId)
   const members = db.prepare('SELECT * FROM member_ranks WHERE guild_id = ?').all(guildId)
   const stmt = db.prepare('UPDATE member_ranks SET current_rank_key = ?, last_recalculated = CURRENT_TIMESTAMP WHERE guild_id = ? AND user_id = ?')
-  let fixedCount = 0
-  for (const m of members) {
-    // Xランクでx_rpがある場合はそのまま維持
-    if (m.current_rank_key === 'x' && m.x_rp !== null) continue
+  const tx = db.transaction(() => {
+    let fixedCount = 0
+    for (const m of members) {
+      // Xランクでx_rpがある場合はそのまま維持
+      if (m.current_rank_key === 'x' && m.x_rp !== null) continue
 
-    const { rank: correctRank } = resolveRank(config, m.current_rp)
-    if (m.current_rank_key !== correctRank.rank_key) {
-      stmt.run(correctRank.rank_key, guildId, m.user_id)
-      fixedCount++
+      const { rank: correctRank } = resolveRank(config, m.current_rp)
+      if (m.current_rank_key !== correctRank.rank_key) {
+        stmt.run(correctRank.rank_key, guildId, m.user_id)
+        fixedCount++
+      }
     }
-  }
+    return fixedCount
+  })
+  tx()
   return members.length
 }

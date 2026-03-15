@@ -36,6 +36,11 @@ export function getAiScoringSettings(guildId) {
       .run(guildId, DEFAULT_PROMPT, JSON.stringify(DEFAULT_BONUS_TIERS))
     row = db.prepare('SELECT * FROM ai_scoring_settings WHERE guild_id = ?').get(guildId)
   }
+  let channels = []
+  let bonusTiers = []
+  try { channels = JSON.parse(row.channels || '[]') } catch { channels = [] }
+  try { bonusTiers = JSON.parse(row.bonus_tiers || '[]') } catch { bonusTiers = [] }
+
   return {
     enabled: !!row.enabled,
     provider: row.provider,
@@ -43,10 +48,10 @@ export function getAiScoringSettings(guildId) {
     model: row.model,
     prompt: row.prompt,
     channelMode: row.channel_mode,
-    channels: JSON.parse(row.channels || '[]'),
+    channels,
     minLength: row.min_length,
     samplingRate: row.sampling_rate,
-    bonusTiers: JSON.parse(row.bonus_tiers || '[]'),
+    bonusTiers,
     lowQualityThreshold: row.low_quality_threshold,
     dailyApiLimit: row.daily_api_limit,
     perUserDailyLimit: row.per_user_daily_limit,
@@ -122,8 +127,8 @@ export function getScoringStats(guildId) {
   `).get(guildId)
   const todayResult = db.prepare(`
     SELECT COUNT(*) as today_count
-    FROM ai_scoring_history WHERE guild_id = ? AND DATE(created_at) = ?
-  `).get(guildId, today)
+    FROM ai_scoring_history WHERE guild_id = ? AND created_at >= ? AND created_at < ?
+  `).get(guildId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
   return {
     totalScored: stats.total_scored,
     averageScore: Math.round(stats.average_score * 100) / 100,
@@ -140,8 +145,8 @@ export function getDailyApiCount(guildId) {
   const today = new Date().toISOString().split('T')[0]
   const result = db.prepare(`
     SELECT COUNT(*) as count
-    FROM ai_scoring_history WHERE guild_id = ? AND DATE(created_at) = ?
-  `).get(guildId, today)
+    FROM ai_scoring_history WHERE guild_id = ? AND created_at >= ? AND created_at < ?
+  `).get(guildId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
   return result.count
 }
 
@@ -153,7 +158,7 @@ export function getUserDailyScoringCount(guildId, userId) {
   const today = new Date().toISOString().split('T')[0]
   const result = db.prepare(`
     SELECT COUNT(*) as count
-    FROM ai_scoring_history WHERE guild_id = ? AND user_id = ? AND DATE(created_at) = ?
-  `).get(guildId, userId, today)
+    FROM ai_scoring_history WHERE guild_id = ? AND user_id = ? AND created_at >= ? AND created_at < ?
+  `).get(guildId, userId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
   return result.count
 }

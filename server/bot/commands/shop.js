@@ -47,24 +47,17 @@ export async function handleBuy(interaction, dbHelpers) {
 
     const reward = rewards[itemNumber - 1]
 
-    // 在庫チェック
-    if (reward.stock !== -1 && (reward.claimed || 0) >= reward.stock) {
-        await interaction.reply({ content: '❌ この商品は売り切れです。', ephemeral: true })
+    // トランザクションで在庫チェック・ポイント消費・claimed更新をアトミックに実行
+    const result = dbHelpers.purchaseReward(guildId, interaction.user.id, reward, {
+        username: interaction.user.username,
+        displayName: interaction.user.username,
+        avatar: interaction.user.displayAvatarURL({ size: 32 }),
+    })
+
+    if (!result.success) {
+        await interaction.reply({ content: `❌ ${result.error}`, ephemeral: true })
         return
     }
-
-    // ポイントチェック
-    const member = dbHelpers.getOrCreateMember(guildId, interaction.user.id, interaction.user.username, interaction.user.username, interaction.user.displayAvatarURL({ size: 32 }))
-    if (member.total_points < reward.cost) {
-        await interaction.reply({ content: `❌ ポイントが不足しています（必要: ${reward.cost}pt / 残高: ${Math.floor(member.total_points)}pt）`, ephemeral: true })
-        return
-    }
-
-    // ポイント消費
-    dbHelpers.addPoints(guildId, interaction.user.id, -reward.cost, 'reward', `報酬交換: ${reward.name}`)
-
-    // claimed カウント増加
-    dbHelpers.updateReward(reward.id, { ...reward, claimed: (reward.claimed || 0) + 1 })
 
     // ロール付与（type === 'role' && role_id がある場合）
     let roleGranted = false
@@ -86,7 +79,7 @@ export async function handleBuy(interaction, dbHelpers) {
         .setColor(0x00d4aa)
         .setTitle('🎁 購入完了！')
         .setDescription(`${reward.icon} **${reward.name}** を交換しました！\n\n💸 -${reward.cost}pt${roleGranted ? '\n✅ ロールが付与されました！' : ''}`)
-        .setFooter({ text: `残高: ${Math.floor(member.total_points - reward.cost)}pt` })
+        .setFooter({ text: `残高: ${Math.floor(result.remainingPoints)}pt` })
 
     await interaction.reply({ embeds: [embed], ephemeral: true })
 }

@@ -8,12 +8,22 @@ import { decryptSecret } from '../client.js'
 // In-memory queue: array of { guildId, userId, channelId, messageId, content }
 const scoringQueue = []
 
+// キューの最大サイズ（メモリ保護）
+const MAX_QUEUE_SIZE = 1000
+
+// ワーカーのインターバルID（クリーンアップ用）
+let workerIntervalId = null
+
 /**
- * Start the scoring worker (call once on bot setup)
- * @param {object} dbHelpers - DB functions
+ * ワーカーを開始する（Bot起動時に1回呼ぶ）
+ * @param {object} dbHelpers - DB操作ヘルパー
+ * @returns {NodeJS.Timeout} インターバルID
  */
 export function startScoringWorker(dbHelpers) {
-  setInterval(async () => {
+  // 既存のワーカーがあればクリア
+  if (workerIntervalId) clearInterval(workerIntervalId)
+
+  workerIntervalId = setInterval(async () => {
     if (scoringQueue.length === 0) return
     const item = scoringQueue.shift()
     try {
@@ -21,18 +31,33 @@ export function startScoringWorker(dbHelpers) {
     } catch (err) {
       console.error('AI scoring error:', err.message)
     }
-  }, 5000) // every 5 seconds
+  }, 5000) // 5秒ごと
+
+  return workerIntervalId
 }
 
 /**
- * Add a message to the scoring queue (called from message handler)
- * Checks eligibility: enabled, channel mode, min length, sampling rate, daily limits
+ * ワーカーを停止する（Bot切断時に呼ぶ）
+ */
+export function stopScoringWorker() {
+  if (workerIntervalId) {
+    clearInterval(workerIntervalId)
+    workerIntervalId = null
+  }
+}
+
+/**
+ * メッセージを採点キューに追加する（メッセージハンドラから呼ばれる）
+ * 対象チェック: 有効化、チャンネルモード、最低文字数、サンプリング率、日次上限
  * @param {import('discord.js').Message} message
  * @param {object} dbHelpers
  */
 export function enqueueForScoring(message, dbHelpers) {
   const guildId = message.guild?.id
   if (!guildId) return
+
+  // キューサイズ上限チェック
+  if (scoringQueue.length >= MAX_QUEUE_SIZE) return
 
   let settings
   try {
@@ -43,10 +68,10 @@ export function enqueueForScoring(message, dbHelpers) {
 
   const content = message.content || ''
 
-  // Min length check
+  // 最低文字数チェック
   if (content.length < settings.minLength) return
 
-  // Channel mode check
+  // チャンネルモードチェック
   const channelId = message.channel.id
   if (settings.channelMode === 'whitelist') {
     if (!settings.channels.includes(channelId)) return
@@ -54,14 +79,14 @@ export function enqueueForScoring(message, dbHelpers) {
     if (settings.channels.includes(channelId)) return
   }
 
-  // Sampling rate (percentage)
+  // サンプリング率（パーセンテージ）
   if (settings.samplingRate < 100 && Math.random() * 100 > settings.samplingRate) return
 
-  // Daily API limit
+  // 日次API上限
   const dailyCount = dbHelpers.getDailyApiCount(guildId)
   if (dailyCount >= settings.dailyApiLimit) return
 
-  // Per-user daily limit
+  // ユーザー日次上限
   const userCount = dbHelpers.getUserDailyScoringCount(guildId, message.author.id)
   if (userCount >= settings.perUserDailyLimit) return
 
@@ -75,9 +100,9 @@ export function enqueueForScoring(message, dbHelpers) {
 }
 
 /**
- * Process a single scoring item: call AI API, parse result, award RP
+ * 1件の採点を処理する: AI APIを呼び、結果をパースし、RPを付与する
  * @param {object} item - { guildId, userId, channelId, messageId, content }
- * @param {object} dbHelpers - DB functions
+ * @param {object} dbHelpers - DB操作ヘルパー
  */
 async function processScoring(item, dbHelpers) {
   const settings = dbHelpers.getAiScoringSettings(item.guildId)
@@ -88,45 +113,48 @@ async function processScoring(item, dbHelpers) {
 
   const { score, reason } = await callAiApi(settings, apiKey, item)
 
-  // Determine RP bonus from bonusTiers (find highest tier where score >= min_score)
+  // スコアを1-10にクランプ（AIが範囲外の値を返す場合の対策）
+  const clampedScore = Math.max(1, Math.min(10, score))
+
+  // ボーナスティアからRP付与量を決定（スコアが高い方から順にマッチ）
   let rpAwarded = 0
   if (settings.bonusTiers && settings.bonusTiers.length > 0) {
     const sorted = [...settings.bonusTiers].sort((a, b) => b.min_score - a.min_score)
     for (const tier of sorted) {
-      if (score >= tier.min_score) {
+      if (clampedScore >= tier.min_score) {
         rpAwarded = tier.rp
         break
       }
     }
   }
 
-  // Low quality threshold: no RP
-  if (score <= settings.lowQualityThreshold) {
+  // 低品質閾値以下: RP付与なし
+  if (clampedScore <= settings.lowQualityThreshold) {
     rpAwarded = 0
   }
 
-  // Award RP if earned
+  // RP付与
   if (rpAwarded > 0) {
     dbHelpers.addRp(
       item.guildId,
       item.userId,
       rpAwarded,
       'ai_scoring',
-      `AI採点ボーナス (スコア: ${score})`
+      `AI採点ボーナス (スコア: ${clampedScore})`
     )
   }
 
-  // Save scoring result
+  // 採点結果を保存
   dbHelpers.addScoringResult(
     item.guildId, item.userId, item.channelId, item.messageId,
-    item.content.substring(0, 200), score, reason, rpAwarded
+    item.content.substring(0, 200), clampedScore, reason, rpAwarded
   )
 }
 
 /**
- * Call the AI API (Anthropic or OpenAI) to score a message
- * @param {object} settings - AI scoring settings including provider, model, prompt
- * @param {string} apiKey - Decrypted API key
+ * AI APIを呼び出してメッセージを採点する（Anthropic / OpenAI両対応）
+ * @param {object} settings - AI採点設定（provider, model, prompt）
+ * @param {string} apiKey - 復号済みAPIキー
  * @param {object} item - { content }
  * @returns {Promise<{ score: number, reason: string }>}
  */
@@ -134,70 +162,92 @@ async function callAiApi(settings, apiKey, item) {
   const { provider, model, prompt } = settings
   let responseText
 
-  if (provider === 'anthropic') {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 100,
-        messages: [
-          { role: 'user', content: `${prompt}\n\nメッセージ: "${item.content}"` }
-        ]
+  try {
+    let res
+    if (provider === 'anthropic') {
+      res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 100,
+          messages: [
+            { role: 'user', content: `${prompt}\n\nメッセージ: "${item.content}"` }
+          ]
+        })
       })
-    })
-    const data = await res.json()
-    responseText = data.content?.[0]?.text || ''
-  } else {
-    // OpenAI
-    const res = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        model,
-        max_tokens: 100,
-        messages: [
-          { role: 'system', content: prompt },
-          { role: 'user', content: item.content }
-        ]
+    } else {
+      // OpenAI
+      res = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'content-type': 'application/json'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 100,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: item.content }
+          ]
+        })
       })
-    })
+    }
+
+    // HTTPステータスチェック
+    if (!res.ok) {
+      const statusText = `${res.status} ${res.statusText}`
+      if (res.status === 429) {
+        // レートリミット: アイテムをキューの末尾に戻す（リトライ）
+        console.warn(`AI scoring rate limited (${statusText}), requeueing`)
+        scoringQueue.push(item)
+      } else {
+        console.error(`AI scoring API error: ${statusText}`)
+      }
+      return { score: 5, reason: `APIエラー: ${statusText}` }
+    }
+
     const data = await res.json()
-    responseText = data.choices?.[0]?.message?.content || ''
+    if (provider === 'anthropic') {
+      responseText = data.content?.[0]?.text || ''
+    } else {
+      responseText = data.choices?.[0]?.message?.content || ''
+    }
+  } catch (err) {
+    console.error('AI scoring fetch error:', err.message)
+    return { score: 5, reason: `通信エラー: ${err.message}` }
   }
 
   return parseAiResponse(responseText)
 }
 
 /**
- * Parse AI response text to extract score and reason
- * @param {string} text - Raw AI response
+ * AIレスポンステキストからスコアと理由を抽出する
+ * @param {string} text - 生のAIレスポンス
  * @returns {{ score: number, reason: string }}
  */
 function parseAiResponse(text) {
-  // Try JSON parse first
+  // JSON形式のパースを試行
   try {
     const parsed = JSON.parse(text)
     if (typeof parsed.score === 'number' && typeof parsed.reason === 'string') {
-      return { score: parsed.score, reason: parsed.reason }
+      return { score: Math.max(1, Math.min(10, parsed.score)), reason: parsed.reason }
     }
   } catch {
-    // JSON parse failed, try regex extraction
+    // JSON失敗 → regex抽出を試行
   }
 
-  // Try to extract score with regex
+  // 正規表現でスコアを抽出
   const match = text.match(/\d+/)
   if (match) {
-    return { score: parseInt(match[0], 10), reason: text }
+    return { score: Math.max(1, Math.min(10, parseInt(match[0], 10))), reason: text }
   }
 
-  // Default fallback
+  // デフォルトフォールバック
   return { score: 5, reason: 'スコア解析に失敗しました' }
 }

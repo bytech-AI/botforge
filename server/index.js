@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
-import { existsSync, copyFileSync, unlinkSync, statSync, readFileSync } from 'fs'
+import { existsSync, copyFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'fs'
 import multer from 'multer'
 import {
     connectBot, disconnectBot, getBotStatus, clearToken,
@@ -39,7 +39,7 @@ import {
     setDecayExempt, getDecayExemptMembers,
     applyDecay, cleanupOldRpTransactions,
     acquireCronLock, cleanupCronLocks,
-    resetAllPoints, resetUserPoints,
+    resetAllPoints, resetUserPoints, purchaseReward,
     resetAllRanks, resetUserRank,
     // AI採点システム
     getAiScoringSettings, updateAiScoringSettings,
@@ -56,6 +56,15 @@ const PORT = process.env.PORT || 3001
 
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
+
+// 破壊的操作の認可チェック: Bot接続済みであることを要求
+function requireBotConnected(req, res, next) {
+    const status = getBotStatus()
+    if (status.status !== 'online') {
+        return res.status(403).json({ error: 'この操作にはBotが接続されている必要があります' })
+    }
+    next()
+}
 
 // Initialize database
 const db = initDatabase()
@@ -714,8 +723,8 @@ app.post('/api/ranks/recalculate', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
-// ポイントリセット
-app.post('/api/points/reset', requireGuildId, (req, res, next) => {
+// ポイントリセット（破壊的操作: Bot接続必須）
+app.post('/api/points/reset', requireBotConnected, requireGuildId, (req, res, next) => {
     try {
         const { guildId } = req.query
         const { userId } = req.body || {}
@@ -728,8 +737,8 @@ app.post('/api/points/reset', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
-// ランクリセット
-app.post('/api/ranks/reset', requireGuildId, (req, res, next) => {
+// ランクリセット（破壊的操作: Bot接続必須）
+app.post('/api/ranks/reset', requireBotConnected, requireGuildId, (req, res, next) => {
     try {
         const { guildId } = req.query
         const { userId } = req.body || {}
@@ -792,7 +801,7 @@ const dataDir = join(__dirname, '..', 'data')
 const dbFilePath = join(dataDir, 'botforge.db')
 
 // ダウンロード: DBファイルをそのまま返す
-app.get('/api/backup/download', (req, res, next) => {
+app.get('/api/backup/download', requireBotConnected, (req, res, next) => {
     try {
         if (!existsSync(dbFilePath)) {
             return res.status(404).json({ error: 'データベースファイルが見つかりません' })
@@ -808,7 +817,7 @@ app.get('/api/backup/download', (req, res, next) => {
 })
 
 // DB情報: サイズ等の統計
-app.get('/api/backup/info', (req, res, next) => {
+app.get('/api/backup/info', requireBotConnected, (req, res, next) => {
     try {
         if (!existsSync(dbFilePath)) {
             return res.json({ exists: false })
@@ -828,7 +837,7 @@ app.get('/api/backup/info', (req, res, next) => {
 
 // アップロード: DBファイルを差し替え
 const upload = multer({ dest: join(dataDir, 'tmp'), limits: { fileSize: 100 * 1024 * 1024 } }) // 100MB上限
-app.post('/api/backup/upload', upload.single('database'), (req, res, next) => {
+app.post('/api/backup/upload', requireBotConnected, upload.single('database'), (req, res, next) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'ファイルが選択されていません' })
@@ -837,7 +846,10 @@ app.post('/api/backup/upload', upload.single('database'), (req, res, next) => {
         const uploadedPath = req.file.path
 
         // SQLiteファイルかどうかバリデーション（先頭16バイトのマジックナンバー）
-        const header = readFileSync(uploadedPath).subarray(0, 16)
+        const fd = openSync(uploadedPath, 'r')
+        const header = Buffer.alloc(16)
+        readSync(fd, header, 0, 16, 0)
+        closeSync(fd)
         const magic = header.toString('ascii', 0, 16)
         if (!magic.startsWith('SQLite format 3')) {
             unlinkSync(uploadedPath)

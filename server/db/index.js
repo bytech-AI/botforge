@@ -28,7 +28,7 @@ export {
   getOrCreateMember, addPoints, transferPoints, addVoiceMinutes,
   getLeaderboard, getUserRank, getTransactionHistory, getPointStats,
   getEconomySettings, updateEconomySettings, claimDaily, getDailyTransferTotal,
-  resetAllPoints, resetUserPoints,
+  resetAllPoints, resetUserPoints, purchaseReward,
 } from './points.js'
 
 // RPランクシステム

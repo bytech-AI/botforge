@@ -28,17 +28,28 @@ export {
   getOrCreateMember, addPoints, transferPoints, addVoiceMinutes,
   getLeaderboard, getUserRank, getTransactionHistory, getPointStats,
   getEconomySettings, updateEconomySettings, claimDaily, getDailyTransferTotal,
+  resetAllPoints, resetUserPoints, purchaseReward,
 } from './points.js'
 
 // RPランクシステム
 export {
   getRankConfig, updateRankConfig, addRankTier, removeRankTier,
+  getXRankConfig, updateXRankConfig,
   getRankSettings, updateRankSettings,
-  getRpRules, updateRpRules,
-  determineRank, getMemberRank, addRp, getCpMultiplier,
+  getRpRules, updateRpRules, createRpRule, deleteRpRule,
+  determineRank, getRankInfo, getMemberRank, addRp, getCpMultiplier,
+  getDailyRpTotal,
   applyDecay, setDecayExempt, getDecayExemptMembers,
   getRpLeaderboard, getRpHistory,
   getSeasonConfig, updateSeasonConfig, getNextSeasonEnd,
   checkAndExecuteSeason, getSeasonHistory,
   cleanupOldRpTransactions, recalculateAllRanks,
+  resetAllRanks, resetUserRank,
 } from './rp-system.js'
+
+// AI採点システム
+export {
+  getAiScoringSettings, updateAiScoringSettings,
+  addScoringResult, getScoringHistory, getScoringStats,
+  getDailyApiCount, getUserDailyScoringCount,
+} from './ai-scoring.js'

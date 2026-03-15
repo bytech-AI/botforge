@@ -7,6 +7,7 @@ const navItems = [
         section: 'メイン', items: [
             { path: '/', icon: '📊', label: 'ダッシュボード' },
             { path: '/setup', icon: '⚙️', label: 'ボット設定' },
+            { path: '/backup', icon: '💾', label: 'バックアップ' },
         ]
     },
     {
@@ -16,6 +17,7 @@ const navItems = [
             { path: '/welcome', icon: '👋', label: '入退室メッセージ' },
             { path: '/scheduled', icon: '⏰', label: '定時メッセージ' },
             { path: '/moderation', icon: '🛡️', label: 'モデレーション' },
+            { path: '/ai-scoring', icon: '🧠', label: 'AI採点' },
             { path: '/embed', icon: '🎨', label: 'Embedビルダー' },
         ]
     },

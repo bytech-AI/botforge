@@ -2,9 +2,11 @@ import express from 'express'
 import cors from 'cors'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
+import { existsSync, copyFileSync, unlinkSync, statSync, openSync, readSync, closeSync } from 'fs'
+import multer from 'multer'
 import {
     connectBot, disconnectBot, getBotStatus, clearToken,
-    autoReconnect, getGuilds, getGuildMembers,
+    autoReconnect, getGuilds, getGuildMembers, getClient,
     registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, setupHandlers
 } from './bot.js'
 import { requireGuildId, requireIntParam, requireBody, maxLength, numberRange } from './middleware/validate.js'
@@ -27,15 +29,23 @@ import {
     getPointDecaySettings, updatePointDecaySettings,
     // RPシステム
     getRankConfig, updateRankConfig, addRankTier, removeRankTier,
+    getXRankConfig, updateXRankConfig,
     getRankSettings, updateRankSettings,
-    getRpRules, updateRpRules,
-    getMemberRank, addRp, getRpLeaderboard, getRpHistory,
+    getRpRules, updateRpRules, createRpRule, deleteRpRule,
+    getMemberRank, addRp, getCpMultiplier, getDailyRpTotal,
+    getRpLeaderboard, getRpHistory,
     getSeasonConfig, updateSeasonConfig, getNextSeasonEnd, getSeasonHistory,
     checkAndExecuteSeason, recalculateAllRanks,
     setDecayExempt, getDecayExemptMembers,
     applyDecay, cleanupOldRpTransactions,
     acquireCronLock, cleanupCronLocks,
+    resetAllPoints, resetUserPoints, purchaseReward,
+    resetAllRanks, resetUserRank,
+    // AI採点システム
+    getAiScoringSettings, updateAiScoringSettings,
+    getScoringHistory, getScoringStats,
 } from './db.js'
+import { encryptSecret } from './bot.js'
 import cron from 'node-cron'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -46,6 +56,15 @@ const PORT = process.env.PORT || 3001
 
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
+
+// 破壊的操作の認可チェック: Bot接続済みであることを要求
+function requireBotConnected(req, res, next) {
+    const status = getBotStatus()
+    if (status.status !== 'online') {
+        return res.status(403).json({ error: 'この操作にはBotが接続されている必要があります' })
+    }
+    next()
+}
 
 // Initialize database
 const db = initDatabase()
@@ -532,6 +551,20 @@ app.delete('/api/ranks/config/tier/:rankKey', requireGuildId, (req, res, next) =
     } catch (err) { next(err) }
 })
 
+// Xランク専用設定
+app.get('/api/ranks/x-config', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getXRankConfig(req.query.guildId))
+    } catch (err) { next(err) }
+})
+
+app.put('/api/ranks/x-config', requireGuildId, (req, res, next) => {
+    try {
+        updateXRankConfig(req.query.guildId, req.body)
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
 // 減衰設定
 app.get('/api/ranks/settings', requireGuildId, (req, res, next) => {
     try {
@@ -577,6 +610,20 @@ app.put('/api/ranks/rp-rules', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+app.post('/api/ranks/rp-rules', requireGuildId, requireBody('action', 'label'), (req, res, next) => {
+    try {
+        const rule = createRpRule(req.query.guildId, req.body)
+        res.json(rule)
+    } catch (err) { next(err) }
+})
+
+app.delete('/api/ranks/rp-rules/:id', requireGuildId, requireIntParam(), (req, res, next) => {
+    try {
+        deleteRpRule(req.query.guildId, parseInt(req.params.id))
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
 // メンバーランク情報
 app.get('/api/ranks/member/:userId', requireGuildId, (req, res, next) => {
     try {
@@ -595,9 +642,21 @@ app.get('/api/ranks/leaderboard', (req, res, next) => {
     try {
         const lb = getRpLeaderboard(guildId, parseInt(limit) || 50)
         const config = getRankConfig(guildId)
+        const xConfig = getXRankConfig(guildId)
         const enriched = lb.map(m => {
             const rankInfo = config.find(r => r.rank_key === m.current_rank_key) || config[0]
-            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: rankInfo.cp_multiplier }
+            let cpMul = rankInfo.cp_multiplier
+            let xTierLabel = null
+            if (m.current_rank_key === 'x' && m.x_rp !== null) {
+                for (const tier of (xConfig.tiers || [])) {
+                    if (m.x_rp >= tier.min && m.x_rp <= tier.max) {
+                        cpMul = tier.cp_multiplier
+                        xTierLabel = tier.label
+                        break
+                    }
+                }
+            }
+            return { ...m, rank_label: rankInfo.rank_label, color: rankInfo.color, icon: rankInfo.icon, cp_multiplier: cpMul, rp_threshold: rankInfo.rp_threshold ?? 0, x_tier_label: xTierLabel }
         })
         res.json(enriched)
     } catch (err) { next(err) }
@@ -664,6 +723,162 @@ app.post('/api/ranks/recalculate', requireGuildId, (req, res, next) => {
     } catch (err) { next(err) }
 })
 
+// ポイントリセット（破壊的操作: Bot接続必須）
+app.post('/api/points/reset', requireBotConnected, requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const { userId } = req.body || {}
+        if (userId) {
+            resetUserPoints(guildId, userId)
+        } else {
+            resetAllPoints(guildId)
+        }
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+// ランクリセット（破壊的操作: Bot接続必須）
+app.post('/api/ranks/reset', requireBotConnected, requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const { userId } = req.body || {}
+        if (userId) {
+            resetUserRank(guildId, userId)
+        } else {
+            resetAllRanks(guildId)
+        }
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+// ============================
+// AI Scoring API
+// ============================
+app.get('/api/ai-scoring/settings', requireGuildId, (req, res, next) => {
+    try {
+        const settings = getAiScoringSettings(req.query.guildId)
+        // APIキーは暗号化された状態のまま返す（フロントでは有無のみ判定）
+        res.json({ ...settings, apiKeyEncrypted: settings.apiKeyEncrypted ? '***' : '' })
+    } catch (err) { next(err) }
+})
+
+app.put('/api/ai-scoring/settings', requireGuildId, (req, res, next) => {
+    try {
+        const { guildId } = req.query
+        const current = getAiScoringSettings(guildId)
+        const body = req.body
+
+        // APIキーが新しく送られてきた場合は暗号化して保存
+        let apiKeyEncrypted = current.apiKeyEncrypted
+        if (body.apiKey && body.apiKey.trim()) {
+            apiKeyEncrypted = encryptSecret(body.apiKey.trim())
+        }
+
+        updateAiScoringSettings(guildId, {
+            ...body,
+            apiKeyEncrypted,
+        })
+        res.json({ success: true })
+    } catch (err) { next(err) }
+})
+
+app.get('/api/ai-scoring/history', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getScoringHistory(req.query.guildId, parseInt(req.query.limit) || 50))
+    } catch (err) { next(err) }
+})
+
+app.get('/api/ai-scoring/stats', requireGuildId, (req, res, next) => {
+    try {
+        res.json(getScoringStats(req.query.guildId))
+    } catch (err) { next(err) }
+})
+
+// ============================
+// Backup / Restore API
+// ============================
+const dataDir = join(__dirname, '..', 'data')
+const dbFilePath = join(dataDir, 'botforge.db')
+
+// ダウンロード: DBファイルをそのまま返す
+app.get('/api/backup/download', requireBotConnected, (req, res, next) => {
+    try {
+        if (!existsSync(dbFilePath)) {
+            return res.status(404).json({ error: 'データベースファイルが見つかりません' })
+        }
+        // WALをメインDBにチェックポイント（データ整合性のため）
+        try { getDb().pragma('wal_checkpoint(TRUNCATE)') } catch { }
+        const stats = statSync(dbFilePath)
+        res.setHeader('Content-Type', 'application/octet-stream')
+        res.setHeader('Content-Disposition', `attachment; filename="botforge-backup-${new Date().toISOString().split('T')[0]}.db"`)
+        res.setHeader('Content-Length', stats.size)
+        res.sendFile(dbFilePath)
+    } catch (err) { next(err) }
+})
+
+// DB情報: サイズ等の統計
+app.get('/api/backup/info', requireBotConnected, (req, res, next) => {
+    try {
+        if (!existsSync(dbFilePath)) {
+            return res.json({ exists: false })
+        }
+        const stats = statSync(dbFilePath)
+        const db = getDb()
+        const tableCount = db.prepare("SELECT COUNT(*) as count FROM sqlite_master WHERE type='table'").get()
+        res.json({
+            exists: true,
+            sizeBytes: stats.size,
+            sizeMB: Math.round(stats.size / 1024 / 1024 * 100) / 100,
+            tables: tableCount.count,
+            lastModified: stats.mtime.toISOString(),
+        })
+    } catch (err) { next(err) }
+})
+
+// アップロード: DBファイルを差し替え
+const upload = multer({ dest: join(dataDir, 'tmp'), limits: { fileSize: 100 * 1024 * 1024 } }) // 100MB上限
+app.post('/api/backup/upload', requireBotConnected, upload.single('database'), (req, res, next) => {
+    try {
+        if (!req.file) {
+            return res.status(400).json({ error: 'ファイルが選択されていません' })
+        }
+
+        const uploadedPath = req.file.path
+
+        // SQLiteファイルかどうかバリデーション（先頭16バイトのマジックナンバー）
+        const fd = openSync(uploadedPath, 'r')
+        const header = Buffer.alloc(16)
+        readSync(fd, header, 0, 16, 0)
+        closeSync(fd)
+        const magic = header.toString('ascii', 0, 16)
+        if (!magic.startsWith('SQLite format 3')) {
+            unlinkSync(uploadedPath)
+            return res.status(400).json({ error: '有効なSQLiteファイルではありません' })
+        }
+
+        // 現在のDBをバックアップ
+        const backupPath = dbFilePath + '.bak'
+        if (existsSync(dbFilePath)) {
+            try { getDb().pragma('wal_checkpoint(TRUNCATE)') } catch { }
+            copyFileSync(dbFilePath, backupPath)
+        }
+
+        // WAL/SHMファイルを削除（新DBとの不整合防止）
+        try { if (existsSync(dbFilePath + '-wal')) unlinkSync(dbFilePath + '-wal') } catch { }
+        try { if (existsSync(dbFilePath + '-shm')) unlinkSync(dbFilePath + '-shm') } catch { }
+
+        // アップロードされたファイルを配置
+        copyFileSync(uploadedPath, dbFilePath)
+        unlinkSync(uploadedPath)
+
+        res.json({ success: true, message: 'データベースをリストアしました。サーバーを再起動してください。' })
+    } catch (err) {
+        // アップロードファイルの後始末
+        if (req.file?.path) try { unlinkSync(req.file.path) } catch { }
+        next(err)
+    }
+})
+
 // ============================
 // Cron Jobs
 // ============================
@@ -686,6 +901,67 @@ cron.schedule('0 19 * * *', () => {
         console.log('🔄 Daily rank maintenance completed')
     } catch (err) {
         console.error('Cron error:', err.message)
+    }
+})
+
+// 毎分: 定時メッセージチェック
+cron.schedule('* * * * *', () => {
+    try {
+        const client = getClient ? getClient() : null
+        if (!client || client.ws.status !== 0) return // Bot not connected
+
+        const guilds = getGuilds()
+        const now = new Date()
+
+        for (const guild of guilds) {
+            try {
+                const messages = getAllScheduledMessages(guild.id)
+                for (const msg of messages) {
+                    if (!msg.enabled || !msg.channelId) continue
+
+                    // 時刻チェック（HH:MM形式）
+                    const tz = msg.timezone || 'Asia/Tokyo'
+                    let nowInTz
+                    try {
+                        nowInTz = new Date(now.toLocaleString('en-US', { timeZone: tz }))
+                    } catch {
+                        nowInTz = now
+                    }
+                    const currentTime = `${String(nowInTz.getHours()).padStart(2, '0')}:${String(nowInTz.getMinutes()).padStart(2, '0')}`
+                    if (currentTime !== msg.time) continue
+
+                    // 曜日チェック（0=月, 6=日 → JSの getDay は 0=日, 1=月...）
+                    const days = JSON.parse(msg.days || '[0,1,2,3,4,5,6]')
+                    const jsDay = nowInTz.getDay() // 0=Sun, 1=Mon, ...
+                    const mappedDay = jsDay === 0 ? 6 : jsDay - 1 // Convert to 0=Mon, 6=Sun
+                    if (!days.includes(mappedDay)) continue
+
+                    // 重複実行防止（同日同メッセージを2回送らない）
+                    if (msg.lastRun) {
+                        const lastDate = new Date(msg.lastRun).toISOString().split('T')[0]
+                        const todayDate = now.toISOString().split('T')[0]
+                        if (lastDate === todayDate) continue
+                    }
+
+                    // 送信
+                    const guildObj = client.guilds.cache.get(guild.id)
+                    if (!guildObj) continue
+                    const channel = guildObj.channels.cache.get(msg.channelId)
+                    if (!channel) continue
+
+                    channel.send(msg.message).then(() => {
+                        // last_run 更新
+                        updateScheduledMessage(msg.id, { ...msg, last_run: now.toISOString() })
+                    }).catch(err => {
+                        console.error(`Scheduled message error (${msg.name}):`, err.message)
+                    })
+                }
+            } catch (err) {
+                console.error(`Scheduled message guild error:`, err.message)
+            }
+        }
+    } catch (err) {
+        console.error('Scheduled message cron error:', err.message)
     }
 })
 

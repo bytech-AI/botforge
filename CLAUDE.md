@@ -47,6 +47,26 @@ The project uses a branch-based workflow with agent workflows defined in `.agent
 - `pick-issue.md` — GitHubのIssueを取得して作業開始（Claude Code用）
 - `submit-pr.md` — Issue紐付きPRを作成してレビューに回す（Claude Code用）
 
+## MCP Servers（.mcp.json）
+
+プロジェクトに7つのMCPサーバーが設定済み（`.mcp.json` は gitignore 済み、ローカルパスを含むため）。
+
+| MCP | パッケージ | できること | 使いどころ |
+|-----|-----------|----------|-----------|
+| **sqlite** | `@modelcontextprotocol/server-sqlite` | `data/botforge.db` に直接SQLクエリ実行、テーブル一覧、スキーマ確認 | データのデバッグ、ポイント計算やランク判定の検証、マイグレーション確認 |
+| **playwright** | `@playwright/mcp` | ブラウザ自動操作（ヘッドレスモード）、ページ遷移、フォーム入力、要素検証 | ダッシュボードUIのE2Eテスト、設定保存の動作確認 |
+| **filesystem** | `@modelcontextprotocol/server-filesystem` | プロジェクトディレクトリ内のファイル読み書き、検索、メタデータ取得 | 設定ファイル確認、ビルド出力の検証 |
+| **fetch** | `mcp-server-fetch`（Python/uvx） | 外部URLの取得、HTMLをMarkdownに変換 | Discord APIドキュメント参照、Railway ドキュメント確認 |
+| **memory** | `@modelcontextprotocol/server-memory` | ナレッジグラフベースの永続記憶（エンティティ・関係・観察） | セッションをまたいだ設計判断や既知の問題の記憶 |
+| **sequential-thinking** | `@modelcontextprotocol/server-sequential-thinking` | 構造化された段階的思考プロセス | 複雑な機能設計（ガチャバランス、RP計算式、レベリングカーブ等） |
+| **discord** | `@SaseQ/discord-mcp`（Smithery経由） | Discord APIフルアクセス — メッセージ送受信、チャンネル管理、ギルド情報取得 | Botのスラッシュコマンド登録確認、テストメッセージ送信、ギルド状態確認 |
+
+**注意:**
+- discord MCPは `DISCORD_TOKEN` 環境変数が必要（`.mcp.json` 内に設定）
+- fetch MCPは Python の `uvx` コマンドが必要（`pip install uv` でインストール）
+- sqlite, playwright, filesystem, memory, sequential-thinking は Anthropic公式/Microsoft製（準公式）
+- discord はコミュニティ製（個人開発者）
+
 ## 共同開発体制（Mac Antigravity ↔ Win Claude Code）
 
 2つのAI環境が対等にレビューし合い、コードをブラッシュアップする体制。

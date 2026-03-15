@@ -1,71 +1,81 @@
 /**
  * ボイスチャンネルイベントのハンドラー
  * ボイスチャンネル参加時間に応じたポイント付与を処理する
+ * 条件: 2人以上 & ミュート解除 & AFKチャンネル除外
  */
-import { Events } from 'discord.js'
-
-// ボイス参加時刻の追跡用Map: key=`${guildId}:${userId}`, value=参加時のタイムスタンプ
-const voiceJoinTimes = new Map()
+import { Events, ChannelType } from 'discord.js'
 
 /**
- * VoiceStateUpdateイベントハンドラーを登録する
- * @param {import('discord.js').Client} client - Discordクライアント
- * @param {object} dbHelpers - db.jsのエクスポート
- * @param {Function} getPointRules - ポイントルール取得関数
+ * VoiceStateUpdateイベントハンドラーとボイス監視タイマーを登録する
  */
 export function setupVoiceHandler(client, dbHelpers, getPointRules) {
-    client.on(Events.VoiceStateUpdate, (oldState, newState) => {
-        const userId = newState.member?.user?.id || oldState.member?.user?.id
-        const guildId = newState.guild?.id || oldState.guild?.id
-        if (!userId || !guildId) return
+    // 毎分チェックで eligible なユーザーにポイント付与
+    setInterval(() => {
+        try {
+            for (const [, guild] of client.guilds.cache) {
+                const guildId = guild.id
+                const rules = getPointRules()
+                const voiceRule = rules.find(r => r.action === 'voice_join' && r.enabled)
+                if (!voiceRule) continue
 
-        const member = newState.member || oldState.member
-        if (member?.user?.bot) return
+                for (const [, channel] of guild.channels.cache) {
+                    // ボイスチャンネルのみ
+                    if (channel.type !== ChannelType.GuildVoice && channel.type !== ChannelType.GuildStageVoice) continue
+                    // AFKチャンネル除外
+                    if (channel.id === guild.afkChannelId) continue
 
-        const key = `${guildId}:${userId}`
+                    // 条件を満たすメンバーをフィルタ
+                    const eligible = channel.members.filter(m =>
+                        !m.user.bot &&
+                        !m.voice.selfMute &&
+                        !m.voice.selfDeaf &&
+                        !m.voice.serverMute &&
+                        !m.voice.serverDeaf
+                    )
 
-        // ボイスチャンネルに参加した
-        if (!oldState.channelId && newState.channelId) {
-            voiceJoinTimes.set(key, Date.now())
-        }
+                    // 2人以上いないとカウントしない
+                    if (eligible.size < 2) continue
 
-        // ボイスチャンネルから退出した
-        if (oldState.channelId && !newState.channelId) {
-            const joinTime = voiceJoinTimes.get(key)
-            if (joinTime) {
-                const minutes = Math.floor((Date.now() - joinTime) / 60000)
-                voiceJoinTimes.delete(key)
-
-                if (minutes > 0) {
-                    const rules = getPointRules()
-                    const voiceRule = rules.find(r => r.action === 'voice_join' && r.enabled)
-                    if (voiceRule) {
+                    for (const [userId, member] of eligible) {
                         try {
                             dbHelpers.getOrCreateMember(guildId, userId,
                                 member.user.username,
                                 member.displayName || member.user.username,
                                 member.user.displayAvatarURL({ size: 32 })
                             )
-                            // RP付与（分数分）
+
+                            // RP付与（日次上限チェック付き）
                             try {
                                 const rpRules = dbHelpers.getRpRules(guildId)
                                 const rpRule = rpRules.find(r => r.action === 'voice_join' && r.enabled)
                                 if (rpRule) {
-                                    dbHelpers.addRp(guildId, userId, rpRule.rp_amount * minutes, 'voice_join', `ボイス参加 (${minutes}分)`)
+                                    let rpToAdd = rpRule.rp_amount // 1分あたり
+                                    const dailyCap = rpRule.daily_cap || 0
+                                    if (dailyCap > 0) {
+                                        const todayTotal = dbHelpers.getDailyRpTotal(guildId, userId, 'voice_join')
+                                        const remaining = Math.max(0, dailyCap - todayTotal)
+                                        rpToAdd = Math.min(rpToAdd, remaining)
+                                    }
+                                    if (rpToAdd > 0) {
+                                        dbHelpers.addRp(guildId, userId, rpToAdd, 'voice_join', 'ボイス参加 (1分)')
+                                    }
                                 }
                             } catch { }
+
                             // CP付与（ランク倍率適用）
                             let multiplier = 1.0
                             try { multiplier = dbHelpers.getCpMultiplier(guildId, userId) } catch { }
-                            const points = voiceRule.points * minutes * multiplier
-                            dbHelpers.addPoints(guildId, userId, points, 'earn', `ボイス参加 (${minutes}分)`)
-                            dbHelpers.addVoiceMinutes(guildId, userId, minutes)
+                            const points = voiceRule.points * multiplier
+                            dbHelpers.addPoints(guildId, userId, points, 'earn', 'ボイス参加 (1分)')
+                            dbHelpers.addVoiceMinutes(guildId, userId, 1)
                         } catch (err) {
-                            console.error('Point earn error (voice):', err.message)
+                            console.error('Voice point error:', err.message)
                         }
                     }
                 }
             }
+        } catch (err) {
+            console.error('Voice interval error:', err.message)
         }
-    })
+    }, 60000) // 60秒ごと
 }

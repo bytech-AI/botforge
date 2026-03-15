@@ -74,6 +74,15 @@ export function getBuiltinCommands() {
             .setName('season')
             .setDescription('現在のシーズン情報を表示します')
             .toJSON(),
+        new SlashCommandBuilder()
+            .setName('shop')
+            .setDescription('報酬ショップを表示します')
+            .toJSON(),
+        new SlashCommandBuilder()
+            .setName('buy')
+            .setDescription('ショップから報酬を購入します')
+            .addIntegerOption(opt => opt.setName('item').setDescription('商品番号（/shopで確認）').setRequired(true).setMinValue(1))
+            .toJSON(),
     ]
 }
 

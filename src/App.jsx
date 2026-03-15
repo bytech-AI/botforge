@@ -12,6 +12,8 @@ import PointSystem from './pages/PointSystem'
 import PointLeaderboard from './pages/PointLeaderboard'
 import Rewards from './pages/Rewards'
 import RankSystem from './pages/RankSystem'
+import AiScoring from './pages/AiScoring'
+import Backup from './pages/Backup'
 import { useState, useEffect, useRef, createContext } from 'react'
 
 export const AppContext = createContext()
@@ -21,7 +23,7 @@ function App() {
     const [botName, setBotName] = useState('')
     const [botAvatar, setBotAvatar] = useState('')
     const [guilds, setGuilds] = useState([])
-    const [selectedGuild, setSelectedGuild] = useState(null)
+    const [selectedGuild, setSelectedGuild] = useState(() => localStorage.getItem('selectedGuild'))
     const [toast, setToast] = useState(null)
     const guildInitialized = useRef(false)
 
@@ -47,7 +49,9 @@ function App() {
                     // Only auto-select the first guild once on initial load
                     if (gData.length > 0 && !guildInitialized.current) {
                         guildInitialized.current = true
-                        setSelectedGuild(gData[0].id)
+                        const saved = localStorage.getItem('selectedGuild')
+                        const validSaved = saved && gData.some(g => g.id === saved)
+                        setSelectedGuild(validSaved ? saved : gData[0].id)
                     }
                 } else {
                     setBotStatus('offline')
@@ -74,7 +78,7 @@ function App() {
             botName, setBotName,
             botAvatar, setBotAvatar,
             guilds, setGuilds, refreshGuilds,
-            selectedGuild, setSelectedGuild,
+            selectedGuild, setSelectedGuild: (id) => { localStorage.setItem('selectedGuild', id); setSelectedGuild(id) },
             showToast
         }}>
             <Router>
@@ -84,11 +88,13 @@ function App() {
                         <Routes>
                             <Route path="/" element={<Dashboard />} />
                             <Route path="/setup" element={<BotSetup />} />
+                            <Route path="/backup" element={<Backup />} />
                             <Route path="/commands" element={<CommandBuilder />} />
                             <Route path="/auto-response" element={<AutoResponse />} />
                             <Route path="/welcome" element={<WelcomeMessages />} />
                             <Route path="/scheduled" element={<ScheduledMessages />} />
                             <Route path="/moderation" element={<Moderation />} />
+                            <Route path="/ai-scoring" element={<AiScoring />} />
                             <Route path="/embed" element={<EmbedBuilder />} />
                             <Route path="/points" element={<PointSystem />} />
                             <Route path="/leaderboard" element={<PointLeaderboard />} />

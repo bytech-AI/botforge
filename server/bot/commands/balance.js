@@ -26,18 +26,30 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
             )
             const rank = dbHelpers.getUserRank(guildId, targetUser.id)
             const rankInfo = dbHelpers.getMemberRank(guildId, targetUser.id)
-            const config = dbHelpers.getRankConfig(guildId)
-            const currentIdx = config.findIndex(r => r.rank_key === rankInfo.current_rank_key)
-            const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
 
             // RP進捗バー
-            const nextThreshold = nextRank ? nextRank.rp_threshold : rankInfo.rp_threshold
-            const prevThreshold = rankInfo.rp_threshold
-            const rpProgress = nextRank
-                ? Math.min(100, Math.floor(((rankInfo.current_rp - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
-                : 100
-            const filled = Math.floor(rpProgress / 10)
-            const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+            let rpDisplay, progressLine
+            if (rankInfo.is_x_rank && rankInfo.x_rp !== null && rankInfo.x_rp !== undefined) {
+                // Xランク: パワーゲージ表示
+                const xProgress = rankInfo.x_max_rp > 0 ? Math.min(100, Math.floor((rankInfo.x_rp / rankInfo.x_max_rp) * 100)) : 100
+                const filled = Math.floor(xProgress / 10)
+                const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+                rpDisplay = `**${rankInfo.x_rp.toLocaleString()}** / ${rankInfo.x_max_rp.toLocaleString()} XP${rankInfo.x_tier_label ? ` (${rankInfo.x_tier_label})` : ''}`
+                progressLine = `${progressBar} ${xProgress}%`
+            } else if (rankInfo.is_max_rank) {
+                rpDisplay = `**${rankInfo.current_rp.toLocaleString()}** RP`
+                progressLine = '█'.repeat(10) + ' MAX'
+            } else {
+                const currentThreshold = rankInfo.rp_threshold
+                const nextThreshold = rankInfo.next_rp_threshold
+                const rangeSize = nextThreshold - currentThreshold
+                const progressInRange = rankInfo.current_rp - currentThreshold
+                const rpProgress = rangeSize > 0 ? Math.min(100, Math.floor((progressInRange / rangeSize) * 100)) : 100
+                const filled = Math.floor(rpProgress / 10)
+                const progressBar = '█'.repeat(filled) + '░'.repeat(10 - filled)
+                rpDisplay = `**${rankInfo.current_rp.toLocaleString()}** / ${nextThreshold.toLocaleString()} RP${rankInfo.next_rank_label ? ` (次: ${rankInfo.next_rank_label})` : ''}`
+                progressLine = `${progressBar} ${rpProgress}%`
+            }
 
             const embed = new EmbedBuilder()
                 .setColor(parseInt((rankInfo.color || '#7c5cfc').replace('#', ''), 16))
@@ -45,8 +57,8 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
                 .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
                 .setDescription(`**${rankInfo.icon} ${rankInfo.rank_label}** (倍率 ×${rankInfo.cp_multiplier})`)
                 .addFields(
-                    { name: '📊 RP', value: `**${rankInfo.current_rp.toLocaleString()}** / ${nextRank ? nextThreshold.toLocaleString() : '最大'} ${nextRank ? `(次: ${nextRank.rank_label})` : ''}`, inline: false },
-                    { name: '進捗', value: `${progressBar} ${rpProgress}%`, inline: false },
+                    { name: '📊 RP', value: rpDisplay, inline: false },
+                    { name: '進捗', value: progressLine, inline: false },
                     { name: '💎 ポイント残高', value: `**${Math.floor(member.total_points).toLocaleString()}** pt`, inline: true },
                     { name: '🏆 ランキング', value: `#${rank}`, inline: true },
                     { name: '🔥 連続ログイン', value: `${member.streak_days}日`, inline: true },

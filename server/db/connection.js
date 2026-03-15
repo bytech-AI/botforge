@@ -118,7 +118,7 @@ export function initDatabase() {
 
     CREATE TABLE IF NOT EXISTS point_economy_settings (
       guild_id TEXT PRIMARY KEY,
-      transfer_fee_percent REAL DEFAULT 5,
+      transfer_fee_percent REAL DEFAULT 0,
       min_transfer_amount REAL DEFAULT 10,
       daily_transfer_limit REAL DEFAULT 10000,
       daily_bonus_amount REAL DEFAULT 50,
@@ -245,7 +245,11 @@ export function initDatabase() {
       rank_key TEXT NOT NULL,
       rank_label TEXT NOT NULL,
       rank_order INTEGER NOT NULL,
-      rp_threshold INTEGER NOT NULL,
+      rp_threshold INTEGER DEFAULT 0,
+      promotion_threshold INTEGER DEFAULT 99,
+      is_special INTEGER DEFAULT 0,
+      entry_rp INTEGER DEFAULT 0,
+      demotion_threshold INTEGER DEFAULT NULL,
       cp_multiplier REAL NOT NULL,
       color TEXT DEFAULT '#808080',
       icon TEXT DEFAULT '⭐',
@@ -255,7 +259,7 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS rank_settings (
       guild_id TEXT PRIMARY KEY,
       decay_rate REAL DEFAULT 0.02,
-      decay_grace_days INTEGER DEFAULT 1,
+      decay_grace_days INTEGER DEFAULT 5,
       decay_floor INTEGER DEFAULT 0
     );
 
@@ -292,6 +296,7 @@ export function initDatabase() {
       icon TEXT DEFAULT '⭐',
       rp_amount INTEGER DEFAULT 10,
       cooldown INTEGER DEFAULT 0,
+      daily_cap INTEGER DEFAULT 0,
       enabled INTEGER DEFAULT 1,
       UNIQUE(guild_id, action)
     );
@@ -301,7 +306,7 @@ export function initDatabase() {
       guild_id TEXT NOT NULL UNIQUE,
       enabled INTEGER DEFAULT 1,
       cycle_type TEXT DEFAULT 'months',
-      cycle_value INTEGER DEFAULT 3,
+      cycle_value INTEGER DEFAULT 1,
       start_date DATE NOT NULL DEFAULT (date('now')),
       bonus_distribution TEXT DEFAULT '{}',
       notify_channel_id TEXT DEFAULT '',
@@ -317,6 +322,54 @@ export function initDatabase() {
       results TEXT NOT NULL DEFAULT '[]',
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- === Xランク専用設定テーブル ===
+
+    CREATE TABLE IF NOT EXISTS x_rank_config (
+      guild_id TEXT PRIMARY KEY,
+      max_rp INTEGER DEFAULT 3000,
+      entry_rp INTEGER DEFAULT 1000,
+      demotion_threshold INTEGER DEFAULT 0,
+      tiers TEXT DEFAULT '[]'
+    );
+
+    -- === AI採点システムテーブル ===
+
+    CREATE TABLE IF NOT EXISTS ai_scoring_settings (
+      guild_id TEXT PRIMARY KEY,
+      enabled INTEGER DEFAULT 0,
+      provider TEXT DEFAULT 'anthropic',
+      api_key_encrypted TEXT DEFAULT '',
+      model TEXT DEFAULT 'claude-haiku-4-5-20251001',
+      prompt TEXT DEFAULT '',
+      channel_mode TEXT DEFAULT 'all',
+      channels TEXT DEFAULT '[]',
+      min_length INTEGER DEFAULT 20,
+      sampling_rate INTEGER DEFAULT 100,
+      bonus_tiers TEXT DEFAULT '[]',
+      low_quality_threshold INTEGER DEFAULT 3,
+      daily_api_limit INTEGER DEFAULT 500,
+      per_user_daily_limit INTEGER DEFAULT 30,
+      notify_mode TEXT DEFAULT 'none',
+      log_channel_id TEXT DEFAULT '',
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE TABLE IF NOT EXISTS ai_scoring_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      channel_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      message_preview TEXT DEFAULT '',
+      score INTEGER DEFAULT 0,
+      reasoning TEXT DEFAULT '',
+      rp_awarded INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_ai_scoring_guild_date
+      ON ai_scoring_history(guild_id, created_at);
 
     -- === Cronロックテーブル（冪等性担保） ===
 
@@ -338,6 +391,16 @@ export function initDatabase() {
     'ALTER TABLE commands ADD COLUMN point_reward_max REAL DEFAULT 0',
     "ALTER TABLE auto_responses ADD COLUMN guild_id TEXT NOT NULL DEFAULT '__global__'",
     'ALTER TABLE auto_responses ADD COLUMN updated_at DATETIME DEFAULT CURRENT_TIMESTAMP',
+    // RPシステム: 旧ランク内相対RPカラム（後方互換のため残す）
+    'ALTER TABLE rank_config ADD COLUMN promotion_threshold INTEGER DEFAULT 99',
+    'ALTER TABLE rank_config ADD COLUMN is_special INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN entry_rp INTEGER DEFAULT 0',
+    'ALTER TABLE rank_config ADD COLUMN demotion_threshold INTEGER DEFAULT NULL',
+    // RPシステム v2: 累積RP方式への移行
+    'ALTER TABLE rank_config ADD COLUMN rp_threshold INTEGER DEFAULT 0',
+    'ALTER TABLE rp_rules ADD COLUMN daily_cap INTEGER DEFAULT 0',
+    // Xランク専用: member_ranksにx_rpカラム追加
+    'ALTER TABLE member_ranks ADD COLUMN x_rp INTEGER DEFAULT NULL',
   ]
   for (const sql of migrations) {
     try { db.exec(sql) } catch { /* column already exists */ }

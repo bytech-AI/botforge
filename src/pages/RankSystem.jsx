@@ -11,12 +11,14 @@ export default function RankSystem() {
     // RPルール
     const [rpRules, setRpRules] = useState([])
     // 減衰設定
-    const [decaySettings, setDecaySettings] = useState({ decay_rate: 0.02, decay_grace_days: 1, decay_floor: 0 })
+    const [decaySettings, setDecaySettings] = useState({ decay_rate: 0.02, decay_grace_days: 5, decay_floor: 0 })
     const [exemptMembers, setExemptMembers] = useState([])
     // シーズン
-    const [seasonConfig, setSeasonConfig] = useState({ enabled: true, cycle_type: 'months', cycle_value: 3, start_date: '', bonus_distribution: { rank_bonuses: {}, top_bonuses: [] }, notify_channel_id: '' })
+    const [seasonConfig, setSeasonConfig] = useState({ enabled: true, cycle_type: 'months', cycle_value: 1, start_date: '', bonus_distribution: { rank_bonuses: {}, top_bonuses: [] }, notify_channel_id: '' })
     const [nextSeasonEnd, setNextSeasonEnd] = useState('')
     const [seasonHistory, setSeasonHistory] = useState([])
+    // Xランク設定
+    const [xRankConfig, setXRankConfig] = useState({ max_rp: 3000, entry_rp: 1000, demotion_threshold: 0, tiers: [] })
     // リーダーボード
     const [leaderboard, setLeaderboard] = useState([])
     const [searchQuery, setSearchQuery] = useState('')
@@ -28,6 +30,7 @@ export default function RankSystem() {
         fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`).then(r => r.json()).then(setRpRules).catch(() => { })
         fetch(`/api/ranks/settings?guildId=${selectedGuild}`).then(r => r.json()).then(setDecaySettings).catch(() => { })
         fetch(`/api/ranks/exempt?guildId=${selectedGuild}`).then(r => r.json()).then(setExemptMembers).catch(() => { })
+        fetch(`/api/ranks/x-config?guildId=${selectedGuild}`).then(r => r.json()).then(setXRankConfig).catch(() => { })
         fetch(`/api/ranks/season?guildId=${selectedGuild}`).then(r => r.json()).then(setSeasonConfig).catch(() => { })
         fetch(`/api/ranks/season/next?guildId=${selectedGuild}`).then(r => r.json()).then(d => setNextSeasonEnd(d.nextEnd || '')).catch(() => { })
         fetch(`/api/ranks/season/history?guildId=${selectedGuild}`).then(r => r.json()).then(setSeasonHistory).catch(() => { })
@@ -52,48 +55,97 @@ export default function RankSystem() {
     // === 保存関数 ===
     const saveRankConfig = async () => {
         try {
-            await fetch(`/api/ranks/config?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/config?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ ranks })
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('ランク設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
+    }
+
+    const saveXRankConfig = async () => {
+        try {
+            const res = await fetch(`/api/ranks/x-config?guildId=${selectedGuild}`, {
+                method: 'PUT', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(xRankConfig)
+            })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
+            showToast('Xランク設定を保存しました')
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveRpRules = async () => {
         try {
-            await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ rules: rpRules })
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('RPルールを保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveDecaySettings = async () => {
         try {
-            await fetch(`/api/ranks/settings?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/settings?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(decaySettings)
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('減衰設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 
     const saveSeasonConfig = async () => {
         try {
-            await fetch(`/api/ranks/season?guildId=${selectedGuild}`, {
+            const res = await fetch(`/api/ranks/season?guildId=${selectedGuild}`, {
                 method: 'PUT', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(seasonConfig)
             })
+            if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('シーズン設定を保存しました')
-        } catch { showToast('保存に失敗しました', 'error') }
+        } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
+    }
+
+    // === RPルール追加・削除 ===
+    const [showNewRuleForm, setShowNewRuleForm] = useState(false)
+    const [newRule, setNewRule] = useState({ action: '', label: '', icon: '⭐', rp_amount: 10, cooldown: 0, daily_cap: 0 })
+
+    const addRpRule = async () => {
+        try {
+            const res = await fetch(`/api/ranks/rp-rules?guildId=${selectedGuild}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(newRule)
+            })
+            if (!res.ok) throw new Error((await res.json()).error || '追加に失敗しました')
+            const created = await res.json()
+            setRpRules([...rpRules, created])
+            setNewRule({ action: '', label: '', icon: '⭐', rp_amount: 10, cooldown: 0, daily_cap: 0 })
+            setShowNewRuleForm(false)
+            showToast('RPルールを追加しました')
+        } catch (err) { showToast(err.message || '追加に失敗しました', 'error') }
+    }
+
+    const deleteRpRule = async (ruleId) => {
+        if (!confirm('このRPルールを削除しますか？')) return
+        try {
+            const res = await fetch(`/api/ranks/rp-rules/${ruleId}?guildId=${selectedGuild}`, { method: 'DELETE' })
+            if (!res.ok) throw new Error((await res.json()).error || '削除に失敗しました')
+            setRpRules(rpRules.filter(r => r.id !== ruleId))
+            showToast('RPルールを削除しました')
+        } catch (err) { showToast(err.message || '削除に失敗しました', 'error') }
     }
 
     // === 減衰シミュレーション ===
     const simDecay = (rp, days) => {
         let v = rp
-        for (let i = 0; i < days; i++) v = Math.max(Math.floor(v * (1 - decaySettings.decay_rate)), decaySettings.decay_floor)
+        const graceDays = decaySettings.decay_grace_days || 0
+        for (let i = 0; i < days; i++) {
+            if (i >= graceDays) {
+                v = Math.max(Math.floor(v * (1 - decaySettings.decay_rate)), decaySettings.decay_floor)
+            }
+        }
         return v
     }
 
@@ -123,6 +175,7 @@ export default function RankSystem() {
                     { id: 'season', label: '🏆 シーズンボーナス' },
                     { id: 'leaderboard', label: '🏅 RPリーダーボード' },
                     { id: 'stats', label: '📊 分布 & 履歴' },
+                    { id: 'danger', label: '⚠️ リセット' },
                 ].map(tab => (
                     <button key={tab.id}
                         className={`tab ${activeTab === tab.id ? 'active' : ''}`}
@@ -131,7 +184,7 @@ export default function RankSystem() {
                 ))}
             </div>
 
-            {/* タブ1: ランク設定 */}
+            {/* タブ1: ランク設定（累積RP閾値方式） */}
             {activeTab === 'config' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
                     <div className="card" style={{
@@ -139,7 +192,7 @@ export default function RankSystem() {
                         borderColor: 'rgba(124, 92, 252, 0.15)'
                     }}>
                         <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                            ⚙️ 各ランクのRP閾値・CP倍率・アイコン・カラーを自由に設定できます。行の追加・削除も可能です。
+                            ⚙️ 各ランクのRP閾値・CP倍率・アイコン・カラーを設定できます。累積RPが閾値以上になると自動でランクが上がります。減衰でRPが下がればランクも下がります。
                         </p>
                     </div>
 
@@ -148,13 +201,13 @@ export default function RankSystem() {
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>順序</th>
-                                        <th>アイコン</th>
-                                        <th>キー</th>
-                                        <th>ラベル</th>
-                                        <th>RP閾値</th>
-                                        <th>CP倍率</th>
-                                        <th>カラー</th>
+                                        <th style={{ fontSize: '0.78rem' }}>順序</th>
+                                        <th style={{ fontSize: '0.78rem' }}>アイコン</th>
+                                        <th style={{ fontSize: '0.78rem' }}>キー</th>
+                                        <th style={{ fontSize: '0.78rem' }}>ラベル</th>
+                                        <th style={{ fontSize: '0.78rem' }}>RP閾値</th>
+                                        <th style={{ fontSize: '0.78rem' }}>CP倍率</th>
+                                        <th style={{ fontSize: '0.78rem' }}>カラー</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -172,7 +225,7 @@ export default function RankSystem() {
                                                     onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, rank_label: e.target.value } : x))} />
                                             </td>
                                             <td>
-                                                <input type="number" className="form-input" value={r.rp_threshold} style={{ width: '90px' }}
+                                                <input type="number" className="form-input" value={r.rp_threshold ?? 0} style={{ width: '100px' }}
                                                     onChange={e => setRanks(ranks.map((x, j) => j === i ? { ...x, rp_threshold: parseInt(e.target.value) || 0 } : x))} />
                                             </td>
                                             <td>
@@ -206,6 +259,106 @@ export default function RankSystem() {
                 </div>
             )}
 
+            {/* Xランク専用設定（ランク設定タブ内） */}
+            {activeTab === 'config' && (
+                <div className="card" style={{ marginTop: 'var(--spacing-md)' }}>
+                    <div className="card-header">
+                        <h2>✦ Xランク専用設定</h2>
+                    </div>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                        Xランクは特別なランクです。Xランク内で独自のRP（パワー）を持ち、サブティアでCP倍率が変化します。パワーが0になるとS+に降格します。
+                    </p>
+
+                    <div className="grid-2" style={{ gap: 'var(--spacing-lg)' }}>
+                        <div className="form-group">
+                            <label className="form-label">最大パワー（X内RP上限）</label>
+                            <input type="number" className="form-input" min="100" value={xRankConfig.max_rp}
+                                onChange={e => setXRankConfig({ ...xRankConfig, max_rp: parseInt(e.target.value) || 3000 })} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">加入時パワー（X昇格時の初期値）</label>
+                            <input type="number" className="form-input" min="0" value={xRankConfig.entry_rp}
+                                onChange={e => setXRankConfig({ ...xRankConfig, entry_rp: parseInt(e.target.value) || 0 })} />
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">降格閾値（この値以下でS+に降格）</label>
+                            <input type="number" className="form-input" min="0" value={xRankConfig.demotion_threshold}
+                                onChange={e => setXRankConfig({ ...xRankConfig, demotion_threshold: parseInt(e.target.value) || 0 })} />
+                        </div>
+                    </div>
+
+                    {/* サブティア設定 */}
+                    <div style={{ marginTop: 'var(--spacing-lg)' }}>
+                        <label className="form-label" style={{ marginBottom: 'var(--spacing-sm)' }}>サブティア（パワー範囲 → CP倍率）</label>
+                        <div className="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>ラベル</th>
+                                        <th>パワー下限</th>
+                                        <th>パワー上限</th>
+                                        <th>CP倍率</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {(xRankConfig.tiers || []).map((tier, i) => (
+                                        <tr key={i}>
+                                            <td>
+                                                <input className="form-input" value={tier.label || ''} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], label: e.target.value }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" min="0" value={tier.min} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], min: parseInt(e.target.value) || 0 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" min="0" value={tier.max} style={{ width: '90px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], max: parseInt(e.target.value) || 0 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <input type="number" className="form-input" step="0.1" min="0.1" max="10" value={tier.cp_multiplier} style={{ width: '80px' }}
+                                                    onChange={e => {
+                                                        const t = [...xRankConfig.tiers]
+                                                        t[i] = { ...t[i], cp_multiplier: parseFloat(e.target.value) || 1 }
+                                                        setXRankConfig({ ...xRankConfig, tiers: t })
+                                                    }} />
+                                            </td>
+                                            <td>
+                                                <button className="btn-icon" style={{ color: 'var(--accent-danger)' }}
+                                                    onClick={() => setXRankConfig({ ...xRankConfig, tiers: xRankConfig.tiers.filter((_, j) => j !== i) })}>✕</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="flex-between" style={{ marginTop: 'var(--spacing-sm)' }}>
+                            <button className="btn btn-secondary btn-sm" onClick={() => {
+                                const lastMax = xRankConfig.tiers.length > 0 ? xRankConfig.tiers[xRankConfig.tiers.length - 1].max + 1 : 0
+                                setXRankConfig({
+                                    ...xRankConfig,
+                                    tiers: [...xRankConfig.tiers, { min: lastMax, max: lastMax + 999, cp_multiplier: 1.5, label: `X-${xRankConfig.tiers.length + 1}` }]
+                                })
+                            }}>＋ ティア追加</button>
+                            <button className="btn btn-primary" onClick={saveXRankConfig}>💾 Xランク設定を保存</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* タブ2: RPルール */}
             {activeTab === 'rp-rules' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
@@ -214,9 +367,57 @@ export default function RankSystem() {
                         borderColor: 'rgba(0, 212, 170, 0.15)'
                     }}>
                         <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                            ⚡ 各アクションで獲得できるRP量を設定します。RPが貯まるとランクが上がり、CP倍率がアップします。
+                            ⚡ 各アクションで獲得できるRP量を設定します。RPが貯まるとランクが上がり、CP倍率がアップします。日次上限を設定すると1日あたりの獲得RP量を制限できます。
                         </p>
                     </div>
+
+                    <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRuleForm(!showNewRuleForm)}
+                        style={{ alignSelf: 'flex-start' }}>
+                        ＋ 新しいRPルール
+                    </button>
+
+                    {showNewRuleForm && (
+                        <div className="card" style={{ padding: 'var(--spacing-md) var(--spacing-lg)', borderColor: 'rgba(0, 212, 170, 0.3)' }}>
+                            <h4 style={{ fontSize: '0.92rem', marginBottom: 'var(--spacing-md)' }}>新しいRPルールを追加</h4>
+                            <div className="grid-2" style={{ gap: 'var(--spacing-md)' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">アクション（キー）</label>
+                                    <input className="form-input" placeholder="例: event_attend" value={newRule.action}
+                                        onChange={e => setNewRule({ ...newRule, action: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">ラベル</label>
+                                    <input className="form-input" placeholder="例: イベント参加" value={newRule.label}
+                                        onChange={e => setNewRule({ ...newRule, label: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">アイコン</label>
+                                    <input className="form-input" value={newRule.icon} style={{ width: '70px', textAlign: 'center' }}
+                                        onChange={e => setNewRule({ ...newRule, icon: e.target.value })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">RP量</label>
+                                    <input type="number" className="form-input" min="0" value={newRule.rp_amount}
+                                        onChange={e => setNewRule({ ...newRule, rp_amount: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">クールダウン（秒）</label>
+                                    <input type="number" className="form-input" min="0" value={newRule.cooldown}
+                                        onChange={e => setNewRule({ ...newRule, cooldown: parseInt(e.target.value) || 0 })} />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label className="form-label">日次上限（0=無制限）</label>
+                                    <input type="number" className="form-input" min="0" value={newRule.daily_cap}
+                                        onChange={e => setNewRule({ ...newRule, daily_cap: parseInt(e.target.value) || 0 })} />
+                                </div>
+                            </div>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)', marginTop: 'var(--spacing-md)', justifyContent: 'flex-end' }}>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setShowNewRuleForm(false)}>キャンセル</button>
+                                <button className="btn btn-primary btn-sm" onClick={addRpRule}
+                                    disabled={!newRule.action || !newRule.label}>追加</button>
+                            </div>
+                        </div>
+                    )}
 
                     {rpRules.map((rule) => (
                         <div key={rule.id} className="card" style={{
@@ -235,14 +436,18 @@ export default function RankSystem() {
                                         <p style={{ fontSize: '0.78rem', color: 'var(--text-tertiary)' }}>{rule.action}</p>
                                     </div>
                                 </div>
-                                <label className="toggle">
-                                    <input type="checkbox" checked={rule.enabled}
-                                        onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, enabled: e.target.checked } : r))} />
-                                    <span className="toggle-slider"></span>
-                                </label>
+                                <div className="flex-row gap-md">
+                                    <label className="toggle">
+                                        <input type="checkbox" checked={rule.enabled}
+                                            onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, enabled: e.target.checked } : r))} />
+                                        <span className="toggle-slider"></span>
+                                    </label>
+                                    <button className="btn-icon" style={{ color: 'var(--accent-danger)', fontSize: '0.9rem' }}
+                                        onClick={() => deleteRpRule(rule.id)} title="ルールを削除">✕</button>
+                                </div>
                             </div>
                             {rule.enabled && (
-                                <div className="grid-2" style={{ marginTop: 'var(--spacing-md)' }}>
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 'var(--spacing-md)', marginTop: 'var(--spacing-md)' }}>
                                     <div className="form-group" style={{ marginBottom: 0 }}>
                                         <label className="form-label">RP量</label>
                                         <div className="flex-row">
@@ -256,6 +461,12 @@ export default function RankSystem() {
                                         <label className="form-label">クールダウン（秒）</label>
                                         <input type="number" className="form-input" min="0" value={rule.cooldown}
                                             onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, cooldown: parseInt(e.target.value) || 0 } : r))}
+                                            style={{ textAlign: 'center' }} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">日次上限（0=無制限）</label>
+                                        <input type="number" className="form-input" min="0" value={rule.daily_cap || 0}
+                                            onChange={e => setRpRules(rpRules.map(r => r.id === rule.id ? { ...r, daily_cap: parseInt(e.target.value) || 0 } : r))}
                                             style={{ textAlign: 'center' }} />
                                     </div>
                                 </div>
@@ -276,7 +487,7 @@ export default function RankSystem() {
                             <h2>📉 アクティブ減衰</h2>
                         </div>
                         <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
-                            活動した日はRPそのまま。サボった日だけRPが減衰します。
+                            活動した日はRPそのまま。サボった日だけRPが減衰します。猶予日数を過ぎると減衰が始まります。
                         </p>
 
                         <div className="grid-2">
@@ -294,7 +505,7 @@ export default function RankSystem() {
                             <div className="form-group">
                                 <label className="form-label">猶予日数</label>
                                 <div className="number-input-group">
-                                    <input type="range" min="0" max="7" value={decaySettings.decay_grace_days}
+                                    <input type="range" min="0" max="14" value={decaySettings.decay_grace_days}
                                         onChange={e => setDecaySettings({ ...decaySettings, decay_grace_days: parseInt(e.target.value) })} />
                                     <input type="number" value={decaySettings.decay_grace_days}
                                         onChange={e => setDecaySettings({ ...decaySettings, decay_grace_days: parseInt(e.target.value) || 0 })} />
@@ -317,13 +528,13 @@ export default function RankSystem() {
                             marginTop: 'var(--spacing-md)', padding: 'var(--spacing-md)',
                             background: 'var(--bg-glass)', borderRadius: 'var(--radius-md)'
                         }}>
-                            <h4 style={{ fontSize: '0.88rem', marginBottom: 'var(--spacing-sm)' }}>📊 減衰シミュレーション（1000 RP の人が非アクティブの場合）</h4>
-                            <div style={{ display: 'flex', gap: 'var(--spacing-lg)' }}>
-                                {[1, 3, 7, 14, 30].map(d => (
+                            <h4 style={{ fontSize: '0.88rem', marginBottom: 'var(--spacing-sm)' }}>📊 減衰シミュレーション（10,000 RP の人が非アクティブの場合）</h4>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-lg)', flexWrap: 'wrap' }}>
+                                {[5, 7, 14, 30, 90].map(d => (
                                     <div key={d} style={{ textAlign: 'center' }}>
                                         <div style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{d}日後</div>
                                         <div style={{ fontWeight: 700, fontSize: '0.9rem', color: 'var(--accent-primary-light)' }}>
-                                            {simDecay(1000, d)} RP
+                                            {simDecay(10000, d).toLocaleString()} RP
                                         </div>
                                     </div>
                                 ))}
@@ -366,12 +577,12 @@ export default function RankSystem() {
                 </div>
             )}
 
-            {/* タブ4: シーズンボーナス */}
+            {/* タブ4: シーズンボーナス（CP配布） */}
             {activeTab === 'season' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
                     <div className="card">
                         <div className="card-header">
-                            <h2>🏆 シーズンボーナス</h2>
+                            <h2>🏆 シーズンボーナス（CP配布）</h2>
                             <label className="toggle">
                                 <input type="checkbox" checked={seasonConfig.enabled}
                                     onChange={e => setSeasonConfig({ ...seasonConfig, enabled: e.target.checked })} />
@@ -411,13 +622,13 @@ export default function RankSystem() {
                                     </div>
                                 )}
 
-                                {/* ランク別ボーナス */}
+                                {/* ランク別ボーナスCP */}
                                 <div className="form-group" style={{ marginTop: 'var(--spacing-md)' }}>
-                                    <label className="form-label">ランク別ボーナスRP</label>
+                                    <label className="form-label">ランク別ボーナスCP</label>
                                     <div className="table-wrapper">
                                         <table>
                                             <thead>
-                                                <tr><th>ランク</th><th>ボーナスRP</th></tr>
+                                                <tr><th>ランク</th><th>ボーナスCP</th></tr>
                                             </thead>
                                             <tbody>
                                                 {ranks.map(r => (
@@ -425,7 +636,7 @@ export default function RankSystem() {
                                                         <td>{r.icon} {r.rank_label}</td>
                                                         <td>
                                                             <input type="number" className="form-input" min="0"
-                                                                style={{ width: '100px' }}
+                                                                style={{ width: '120px' }}
                                                                 value={(seasonConfig.bonus_distribution?.rank_bonuses || {})[r.rank_key] || 0}
                                                                 onChange={e => {
                                                                     const rb = { ...(seasonConfig.bonus_distribution?.rank_bonuses || {}) }
@@ -459,7 +670,7 @@ export default function RankSystem() {
 
                                 <div className="flex-between" style={{ marginTop: 'var(--spacing-md)' }}>
                                     <button className="btn btn-secondary" onClick={async () => {
-                                        if (!confirm('テスト実行しますか？（本番のRPに影響します）')) return
+                                        if (!confirm('テスト実行しますか？（本番のCPに影響します）')) return
                                         try {
                                             await fetch(`/api/ranks/season/execute?guildId=${selectedGuild}`, { method: 'POST' })
                                             showToast('シーズンボーナスを実行しました')
@@ -473,7 +684,7 @@ export default function RankSystem() {
                 </div>
             )}
 
-            {/* タブ5: RPリーダーボード */}
+            {/* タブ5: RPリーダーボード（累積RP降順） */}
             {activeTab === 'leaderboard' && (
                 <div>
                     <div className="flex-between mb-lg">
@@ -490,7 +701,7 @@ export default function RankSystem() {
                                     <th style={{ width: '60px' }}>順位</th>
                                     <th>メンバー</th>
                                     <th style={{ textAlign: 'right' }}>ランク</th>
-                                    <th style={{ textAlign: 'right' }}>RP</th>
+                                    <th style={{ textAlign: 'right' }}>累積RP</th>
                                     <th style={{ textAlign: 'right' }}>CP倍率</th>
                                     <th style={{ textAlign: 'right' }}>ポイント</th>
                                 </tr>
@@ -513,9 +724,14 @@ export default function RankSystem() {
                                                 background: m.color ? `${m.color}22` : undefined,
                                                 color: m.color || undefined,
                                                 border: m.color ? `1px solid ${m.color}44` : undefined,
-                                            }}>{m.icon} {m.rank_label}</span>
+                                            }}>{m.icon} {m.rank_label}{m.x_tier_label ? ` (${m.x_tier_label})` : ''}</span>
                                         </td>
-                                        <td style={{ textAlign: 'right', fontWeight: 700 }}>{(m.current_rp || 0).toLocaleString()}</td>
+                                        <td style={{ textAlign: 'right', fontWeight: 700 }}>
+                                            {m.current_rank_key === 'x' && m.x_rp !== null
+                                                ? <span title={`累積RP: ${(m.current_rp || 0).toLocaleString()}`}>{(m.x_rp || 0).toLocaleString()} <span style={{ fontSize: '0.75rem', color: 'var(--text-tertiary)' }}>XP</span></span>
+                                                : (m.current_rp || 0).toLocaleString()
+                                            }
+                                        </td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-warning)' }}>×{m.cp_multiplier}</td>
                                         <td style={{ textAlign: 'right', color: 'var(--accent-primary-light)' }}>
                                             {(m.total_points || 0).toLocaleString()}
@@ -576,12 +792,86 @@ export default function RankSystem() {
                                         </div>
                                         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
                                             参加者: {h.results.length}人 |
-                                            TOP3: {h.results.slice(0, 3).map(r => `${r.username || r.user_id} (+${r.bonus_rp}RP)`).join(', ')}
+                                            TOP3: {h.results.slice(0, 3).map(r => `${r.username || r.user_id} (+${(r.bonus_cp || r.bonus_rp || 0).toLocaleString()}CP)`).join(', ')}
                                         </div>
                                     </div>
                                 ))}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* リセット（危険な操作）タブ */}
+            {activeTab === 'danger' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
+                    <div className="card" style={{
+                        background: 'linear-gradient(135deg, rgba(255, 71, 87, 0.08) 0%, rgba(255, 107, 107, 0.04) 100%)',
+                        borderColor: 'rgba(255, 71, 87, 0.25)'
+                    }}>
+                        <p style={{ fontSize: '0.88rem', color: 'var(--accent-danger)' }}>
+                            ⚠️ この操作は取り消せません。全メンバーのRP・ランクがリセットされます。
+                        </p>
+                    </div>
+
+                    <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                        <div className="card-header">
+                            <div>
+                                <h2>🗑️ 全メンバーのランクリセット</h2>
+                                <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    全メンバーのRP・ランクをC-に戻し、RP取引履歴を削除します
+                                </p>
+                            </div>
+                        </div>
+                        <button className="btn btn-danger" onClick={async () => {
+                            if (!window.confirm('本当にサーバー全体のランクをリセットしますか？\nこの操作は取り消せません。')) return
+                            if (!window.confirm('最終確認: すべてのメンバーのRP・ランクがリセットされます。よろしいですか？')) return
+                            try {
+                                const res = await fetch(`/api/ranks/reset?guildId=${selectedGuild}`, {
+                                    method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify({})
+                                })
+                                if (!res.ok) throw new Error()
+                                showToast('全メンバーのランクをリセットしました')
+                                // リーダーボード再取得
+                                fetch(`/api/ranks/leaderboard?guildId=${selectedGuild}`).then(r => r.json()).then(setLeaderboard).catch(() => {})
+                            } catch { showToast('リセットに失敗しました', 'error') }
+                        }}>
+                            全ランクをリセット
+                        </button>
+                    </div>
+
+                    <div className="card" style={{ borderColor: 'rgba(255, 71, 87, 0.2)' }}>
+                        <div className="card-header">
+                            <div>
+                                <h2>👤 特定ユーザーのランクリセット</h2>
+                                <p style={{ fontSize: '0.82rem', color: 'var(--text-tertiary)', marginTop: '2px' }}>
+                                    指定したユーザーのRP・ランクのみをリセットします
+                                </p>
+                            </div>
+                        </div>
+                        <div className="form-group">
+                            <label className="form-label">ユーザーID</label>
+                            <div style={{ display: 'flex', gap: 'var(--spacing-sm)' }}>
+                                <input type="text" className="form-input" id="rank-reset-user-id"
+                                    placeholder="例: 123456789012345678" />
+                                <button className="btn btn-danger" onClick={async () => {
+                                    const userId = document.getElementById('rank-reset-user-id').value.trim()
+                                    if (!userId) { showToast('ユーザーIDを入力してください', 'error'); return }
+                                    if (!window.confirm(`ユーザー ${userId} のランクをリセットしますか？`)) return
+                                    try {
+                                        const res = await fetch(`/api/ranks/reset?guildId=${selectedGuild}`, {
+                                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                            body: JSON.stringify({ userId })
+                                        })
+                                        if (!res.ok) throw new Error()
+                                        showToast('ユーザーのランクをリセットしました')
+                                    } catch { showToast('リセットに失敗しました', 'error') }
+                                }}>
+                                    リセット
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}

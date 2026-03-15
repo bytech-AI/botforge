@@ -273,3 +273,61 @@ export function getDailyTransferTotal(guildId, userId) {
   `).get(guildId, userId, today)
   return result.total
 }
+
+/**
+ * 報酬購入をアトミックに実行する（在庫チェック・ポイント消費・claimed更新）
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {object} reward - 報酬オブジェクト
+ * @param {{ username: string, displayName: string, avatar: string }} userInfo
+ * @returns {{ success: boolean, error?: string, remainingPoints?: number }}
+ */
+export function purchaseReward(guildId, userId, reward, userInfo) {
+  const db = getDb()
+  const tx = db.transaction(() => {
+    // 在庫チェック（最新の値をDB内で取得）
+    const currentReward = db.prepare('SELECT * FROM rewards WHERE id = ?').get(reward.id)
+    if (!currentReward || !currentReward.enabled) {
+      return { success: false, error: 'この商品は現在利用できません。' }
+    }
+    if (currentReward.stock !== -1 && (currentReward.claimed || 0) >= currentReward.stock) {
+      return { success: false, error: 'この商品は売り切れです。' }
+    }
+
+    // ポイントチェック
+    const member = getOrCreateMember(guildId, userId, userInfo.username, userInfo.displayName, userInfo.avatar)
+    if (member.total_points < currentReward.cost) {
+      return { success: false, error: `ポイントが不足しています（必要: ${currentReward.cost}pt / 残高: ${Math.floor(member.total_points)}pt）` }
+    }
+
+    // ポイント消費
+    addPoints(guildId, userId, -currentReward.cost, 'reward', `報酬交換: ${currentReward.name}`)
+
+    // claimed カウント増加
+    db.prepare('UPDATE rewards SET claimed = ? WHERE id = ?')
+      .run((currentReward.claimed || 0) + 1, currentReward.id)
+
+    return { success: true, remainingPoints: member.total_points - currentReward.cost }
+  })
+  return tx()
+}
+
+export function resetAllPoints(guildId) {
+  const db = getDb()
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE member_points SET total_points = 0, total_earned = 0, level = 1, messages = 0, reactions = 0, voice_minutes = 0, streak_days = 0 WHERE guild_id = ?').run(guildId)
+    db.prepare('DELETE FROM point_transactions WHERE guild_id = ?').run(guildId)
+    db.prepare('DELETE FROM daily_claims WHERE guild_id = ?').run(guildId)
+  })
+  tx()
+}
+
+export function resetUserPoints(guildId, userId) {
+  const db = getDb()
+  const tx = db.transaction(() => {
+    db.prepare('UPDATE member_points SET total_points = 0, total_earned = 0, level = 1, messages = 0, reactions = 0, voice_minutes = 0, streak_days = 0 WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+    db.prepare('DELETE FROM point_transactions WHERE guild_id = ? AND to_user_id = ?').run(guildId, userId)
+    db.prepare('DELETE FROM daily_claims WHERE guild_id = ? AND user_id = ?').run(guildId, userId)
+  })
+  tx()
+}

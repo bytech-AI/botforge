@@ -5,8 +5,6 @@ import { EmbedBuilder } from 'discord.js'
 
 /**
  * rankingコマンドを処理する（CPベース）
- * @param {object} interaction - Discordインタラクション
- * @param {object} dbHelpers - db.jsのエクスポート
  */
 export async function handleRanking(interaction, dbHelpers) {
     const guildId = interaction.guild?.id
@@ -39,7 +37,7 @@ export async function handleRanking(interaction, dbHelpers) {
 }
 
 /**
- * /rank コマンド: ランク詳細表示
+ * /rank コマンド: ランク詳細表示（累積RP方式）
  */
 export async function handleRank(interaction, dbHelpers) {
     const guildId = interaction.guild?.id
@@ -50,17 +48,28 @@ export async function handleRank(interaction, dbHelpers) {
 
     const targetUser = interaction.options.getUser('user') || interaction.user
     const rankInfo = dbHelpers.getMemberRank(guildId, targetUser.id)
-    const config = dbHelpers.getRankConfig(guildId)
-    const currentIdx = config.findIndex(r => r.rank_key === rankInfo.current_rank_key)
-    const nextRank = currentIdx < config.length - 1 ? config[currentIdx + 1] : null
 
-    const nextThreshold = nextRank ? nextRank.rp_threshold : rankInfo.rp_threshold
-    const prevThreshold = rankInfo.rp_threshold
-    const rpProgress = nextRank
-        ? Math.min(100, Math.floor(((rankInfo.current_rp - prevThreshold) / (nextThreshold - prevThreshold)) * 100))
-        : 100
-    const filled = Math.floor(rpProgress / 7)
-    const progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+    // RP進捗表示
+    let rpLine, progressBar
+    if (rankInfo.is_x_rank && rankInfo.x_rp !== null && rankInfo.x_rp !== undefined) {
+        // Xランク: パワーゲージ
+        const xProgress = rankInfo.x_max_rp > 0 ? Math.min(100, Math.floor((rankInfo.x_rp / rankInfo.x_max_rp) * 100)) : 100
+        const filled = Math.floor(xProgress / 7)
+        progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+        rpLine = `📊 XP: **${rankInfo.x_rp.toLocaleString()}** / ${rankInfo.x_max_rp.toLocaleString()}${rankInfo.x_tier_label ? ` (${rankInfo.x_tier_label})` : ''}\n[${progressBar}] ${xProgress}%`
+    } else if (rankInfo.is_max_rank) {
+        progressBar = '█'.repeat(14) + ' MAX'
+        rpLine = `📊 RP: **${rankInfo.current_rp.toLocaleString()}**\n[${progressBar}]`
+    } else {
+        const currentThreshold = rankInfo.rp_threshold
+        const nextThreshold = rankInfo.next_rp_threshold
+        const rangeSize = nextThreshold - currentThreshold
+        const progressInRange = rankInfo.current_rp - currentThreshold
+        const rpProgress = rangeSize > 0 ? Math.min(100, Math.floor((progressInRange / rangeSize) * 100)) : 100
+        const filled = Math.floor(rpProgress / 7)
+        progressBar = '█'.repeat(filled) + '░'.repeat(14 - filled)
+        rpLine = `📊 RP: **${rankInfo.current_rp.toLocaleString()}** / ${nextThreshold.toLocaleString()}${rankInfo.next_rank_label ? ` (次: ${rankInfo.next_rank_label})` : ''}\n[${progressBar}] ${rpProgress}%`
+    }
 
     let exemptText = ''
     if (rankInfo.decay_exempt) {
@@ -75,9 +84,7 @@ export async function handleRank(interaction, dbHelpers) {
         .setThumbnail(targetUser.displayAvatarURL({ size: 64 }))
         .setDescription(
             `**${rankInfo.rank_label}** (CP倍率 ×${rankInfo.cp_multiplier})\n` +
-            `📊 RP: **${rankInfo.current_rp.toLocaleString()}** / ${nextRank ? nextThreshold.toLocaleString() : '最大'}` +
-            (nextRank ? ` (次: ${nextRank.rank_label})` : '') + '\n' +
-            `[${progressBar}] ${rpProgress}%` +
+            rpLine +
             exemptText
         )
 
@@ -85,7 +92,7 @@ export async function handleRank(interaction, dbHelpers) {
 }
 
 /**
- * /rp-ranking コマンド: RPベースランキング
+ * /rp-ranking コマンド: RPベースランキング（累積RP降順）
  */
 export async function handleRpRanking(interaction, dbHelpers) {
     const guildId = interaction.guild?.id
@@ -119,7 +126,7 @@ export async function handleRpRanking(interaction, dbHelpers) {
 }
 
 /**
- * /season コマンド: シーズン情報表示
+ * /season コマンド: シーズン情報表示（ボーナスはCP表示）
  */
 export async function handleSeason(interaction, dbHelpers) {
     const guildId = interaction.guild?.id
@@ -143,7 +150,7 @@ export async function handleSeason(interaction, dbHelpers) {
     const myPosition = myIdx >= 0 ? myIdx + 1 : '-'
     const myRankInfo = dbHelpers.getMemberRank(guildId, interaction.user.id)
 
-    // 予想ボーナス計算
+    // 予想ボーナス計算（CP）
     let expectedBonus = 0
     const dist = config.bonus_distribution || {}
     if (dist.rank_bonuses && dist.rank_bonuses[myRankInfo.current_rank_key]) {
@@ -168,7 +175,7 @@ export async function handleSeason(interaction, dbHelpers) {
             `**シーズン終了:** ${nextEnd}（残り${daysLeft}日）\n\n` +
             `**あなたの現在:**\n` +
             `${myRankInfo.icon} ${myRankInfo.rank_label} | RP: ${myRankInfo.current_rp.toLocaleString()} | 順位: ${myPosition}位\n\n` +
-            `**予想シーズンボーナス:** +${expectedBonus.toLocaleString()} RP`
+            `**予想シーズンボーナス:** +${expectedBonus.toLocaleString()} CP`
         )
         .setFooter({ text: '頑張ってランクを上げよう！' })
 

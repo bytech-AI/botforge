@@ -5,6 +5,8 @@
 import { Events } from 'discord.js'
 import { checkCooldown } from '../points/cooldown.js'
 import { earnPoints } from '../points/earning.js'
+import { checkMessage } from './moderation.js'
+import { enqueueForScoring } from './ai-scoring.js'
 
 /**
  * MessageCreateイベントハンドラーを登録する
@@ -13,8 +15,16 @@ import { earnPoints } from '../points/earning.js'
  * @param {Function} getPointRules - ポイントルール取得関数
  */
 export function setupMessageHandler(client, dbHelpers, getPointRules) {
-    client.on(Events.MessageCreate, (message) => {
+    client.on(Events.MessageCreate, async (message) => {
         if (message.author.bot || !message.guild) return
+
+        // モデレーションチェック（ブロックされた場合はポイント付与・自動応答をスキップ）
+        try {
+            const modResult = await checkMessage(message, dbHelpers)
+            if (modResult.blocked) return
+        } catch (err) {
+            console.error('Moderation check error:', err.message)
+        }
 
         const rules = getPointRules()
         const msgRule = rules.find(r => r.action === 'message' && r.enabled)
@@ -37,6 +47,11 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
         } catch (err) {
             console.error('Point earn error (message):', err.message)
         }
+
+        // AI採点キューに追加（非同期、メッセージ処理をブロックしない）
+        try {
+            enqueueForScoring(message, dbHelpers)
+        } catch { }
 
         // 自動応答の処理
         try {

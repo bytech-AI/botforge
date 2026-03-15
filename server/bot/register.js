@@ -83,6 +83,10 @@ export function getBuiltinCommands() {
             .setDescription('ショップから報酬を購入します')
             .addIntegerOption(opt => opt.setName('item').setDescription('商品番号（/shopで確認）').setRequired(true).setMinValue(1))
             .toJSON(),
+        new SlashCommandBuilder()
+            .setName('mypoints')
+            .setDescription('ポイント・ランク・獲得履歴をまとめて表示します')
+            .toJSON(),
     ]
 }
 

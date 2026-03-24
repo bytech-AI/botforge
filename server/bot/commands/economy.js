@@ -126,7 +126,7 @@ export async function handleEconomy(interaction, dbHelpers, subCommand) {
                 )
                 .setFooter({ text: '毎日ログインすると連続ボーナスがアップ！' })
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
     }

@@ -33,7 +33,7 @@ export async function handleRanking(interaction, dbHelpers) {
         .setFooter({ text: `${interaction.guild.name} のランキング` })
         .setTimestamp()
 
-    await interaction.reply({ embeds: [embed] })
+    await interaction.reply({ embeds: [embed], ephemeral: true })
 }
 
 /**
@@ -122,7 +122,7 @@ export async function handleRpRanking(interaction, dbHelpers) {
         .setFooter({ text: `${interaction.guild.name} のRPランキング` })
         .setTimestamp()
 
-    await interaction.reply({ embeds: [embed] })
+    await interaction.reply({ embeds: [embed], ephemeral: true })
 }
 
 /**

@@ -1,6 +1,6 @@
 /**
  * ポイント付与の共通ロジック
- * メンバーの存在確認→RP付与（日次上限チェック付き）→CP日次上限チェック→CP倍率適用→ポイント付与をまとめて行うヘルパー
+ * メンバーの存在確認→RP付与（日次上限チェック付き）→CP倍率適用→CP日次上限チェック→ポイント付与をまとめて行うヘルパー
  */
 
 /**
@@ -42,7 +42,14 @@ export function earnPoints(dbHelpers, guildId, userId, username, displayName, av
         }
     }
 
-    // CP日次上限チェック（pointRuleが渡された場合）
+    // ランクのCP倍率を先に適用（上限チェックは倍率適用後の最終値で行う）
+    let multiplier = 1.0
+    try {
+        multiplier = dbHelpers.getCpMultiplier(guildId, userId)
+    } catch { }
+    let finalPoints = points * multiplier
+
+    // CP日次上限チェック（倍率適用後の値でチェック）
     if (pointRule) {
         const capCount = pointRule.daily_cap_count || 0
         const capPoints = pointRule.daily_cap_points || 0
@@ -50,12 +57,10 @@ export function earnPoints(dbHelpers, guildId, userId, username, displayName, av
             try {
                 const stats = dbHelpers.getDailyCpStats(guildId, userId, description)
                 if (capCount > 0 && stats.count >= capCount) return
-                if (capPoints > 0 && stats.total >= capPoints) return
-                // ポイント上限に引っかかる場合、残り分だけ付与
                 if (capPoints > 0) {
                     const remaining = capPoints - stats.total
                     if (remaining <= 0) return
-                    points = Math.min(points, remaining)
+                    finalPoints = Math.min(finalPoints, remaining)
                 }
             } catch (err) {
                 console.error('CP daily cap check error:', err.message)
@@ -63,12 +68,5 @@ export function earnPoints(dbHelpers, guildId, userId, username, displayName, av
         }
     }
 
-    // ランクのCP倍率を取得して適用
-    let multiplier = 1.0
-    try {
-        multiplier = dbHelpers.getCpMultiplier(guildId, userId)
-    } catch { }
-
-    const adjustedPoints = points * multiplier
-    dbHelpers.addPoints(guildId, userId, adjustedPoints, 'earn', description)
+    dbHelpers.addPoints(guildId, userId, finalPoints, 'earn', description)
 }

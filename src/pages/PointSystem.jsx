@@ -123,6 +123,7 @@ export default function PointSystem() {
                     { id: 'channels', label: '📍 チャンネル倍率' },
                     { id: 'bonus', label: '🎯 ボーナス' },
                     { id: 'decay', label: '📉 減衰・有効期限' },
+                    { id: 'admin', label: '🏦 管理者送金' },
                     { id: 'danger', label: '⚠️ リセット' },
                 ].map(tab => (
                     <button
@@ -774,6 +775,73 @@ export default function PointSystem() {
                 </div>
             )}
 
+            {/* Admin Grant Tab */}
+            {activeTab === 'admin' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
+                    <div className="card">
+                        <div className="card-header">
+                            <h2>🏦 管理者ポイント操作</h2>
+                        </div>
+                        <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', marginBottom: 'var(--spacing-md)' }}>
+                            特定のメンバーにポイントを付与、または減額します。マイナス値を入力すると減額になります。
+                        </p>
+
+                        {!selectedGuild ? (
+                            <p style={{ color: 'var(--text-tertiary)', textAlign: 'center', padding: 'var(--spacing-lg)' }}>
+                                サーバーを選択してください
+                            </p>
+                        ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-md)' }}>
+                                <div className="grid-2">
+                                    <div className="form-group">
+                                        <label className="form-label">ユーザーID</label>
+                                        <input type="text" className="form-input" id="admin-grant-user-id"
+                                            placeholder="例: 123456789012345678" />
+                                    </div>
+                                    <div className="form-group">
+                                        <label className="form-label">ポイント数</label>
+                                        <div className="flex-row">
+                                            <input type="number" className="form-input" id="admin-grant-amount"
+                                                placeholder="例: 100（マイナスで減額）" step="1" />
+                                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>pt</span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="form-group">
+                                    <label className="form-label">理由（任意）</label>
+                                    <input type="text" className="form-input" id="admin-grant-reason"
+                                        placeholder="例: イベント報酬、手動補填など" />
+                                </div>
+                                <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button className="btn btn-primary" onClick={async () => {
+                                        const userId = document.getElementById('admin-grant-user-id').value.trim()
+                                        const amount = parseFloat(document.getElementById('admin-grant-amount').value)
+                                        const reason = document.getElementById('admin-grant-reason').value.trim()
+                                        if (!userId) { showToast('ユーザーIDを入力してください', 'error'); return }
+                                        if (!amount || isNaN(amount)) { showToast('ポイント数を入力してください', 'error'); return }
+                                        const action = amount > 0 ? '付与' : '減額'
+                                        if (!window.confirm(`ユーザー ${userId} に ${amount > 0 ? '+' : ''}${amount}pt ${action}しますか？`)) return
+                                        try {
+                                            const res = await fetch('/api/points/adjust', {
+                                                method: 'POST',
+                                                headers: { 'Content-Type': 'application/json' },
+                                                body: JSON.stringify({ guildId: selectedGuild, userId, amount, reason: reason || `管理者による${action}` })
+                                            })
+                                            if (!res.ok) throw new Error((await res.json()).error || '操作に失敗しました')
+                                            showToast(`${userId} に ${amount > 0 ? '+' : ''}${amount}pt ${action}しました`)
+                                            document.getElementById('admin-grant-amount').value = ''
+                                            document.getElementById('admin-grant-reason').value = ''
+                                        } catch (err) { showToast(err.message || '操作に失敗しました', 'error') }
+                                    }}>
+                                        💸 ポイントを操作
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Danger Zone - Reset Tab */}
             {activeTab === 'danger' && (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-xl)' }}>
@@ -854,7 +922,7 @@ export default function PointSystem() {
                 </div>
             )}
 
-            {activeTab !== 'economy' && activeTab !== 'actions' && activeTab !== 'danger' && (
+            {activeTab !== 'economy' && activeTab !== 'actions' && activeTab !== 'admin' && activeTab !== 'danger' && (
                 <div style={{ marginTop: 'var(--spacing-xl)', display: 'flex', justifyContent: 'flex-end' }}>
                     <button className="btn btn-primary btn-lg"
                         onClick={async () => {

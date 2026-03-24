@@ -148,10 +148,24 @@ export function setupVoiceHandler(client, dbHelpers, getPointRules) {
                 }
               } catch { }
 
+              // CP日次上限チェック
+              const capCount = voiceRule.daily_cap_count || 0
+              const capPoints = voiceRule.daily_cap_points || 0
+              let cpPoints = voiceRule.points
+              if (capCount > 0 || capPoints > 0) {
+                const stats = dbHelpers.getDailyCpStats(guildId, userId, 'ボイス参加 (1分)')
+                if (capCount > 0 && stats.count >= capCount) { dbHelpers.addVoiceMinutes(guildId, userId, 1); continue }
+                if (capPoints > 0) {
+                  const remaining = capPoints - stats.total
+                  if (remaining <= 0) { dbHelpers.addVoiceMinutes(guildId, userId, 1); continue }
+                  cpPoints = Math.min(cpPoints, remaining)
+                }
+              }
+
               // CP付与（ランク倍率適用）
               let multiplier = 1.0
               try { multiplier = dbHelpers.getCpMultiplier(guildId, userId) } catch { }
-              const points = voiceRule.points * multiplier
+              const points = cpPoints * multiplier
               dbHelpers.addPoints(guildId, userId, points, 'earn', 'ボイス参加 (1分)')
               dbHelpers.addVoiceMinutes(guildId, userId, 1)
             } catch (err) {

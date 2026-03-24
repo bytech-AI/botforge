@@ -46,7 +46,8 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
                 message.author.displayAvatarURL({ size: 32 }),
                 msgRule.points,
                 'メッセージ送信',
-                'message'
+                'message',
+                msgRule
             )
         } catch (err) {
             console.error('Point earn error (message):', err.message)

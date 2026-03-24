@@ -1,6 +1,6 @@
 /**
  * ポイント付与の共通ロジック
- * メンバーの存在確認→RP付与（日次上限チェック付き）→CP倍率適用→ポイント付与をまとめて行うヘルパー
+ * メンバーの存在確認→RP付与（日次上限チェック付き）→CP日次上限チェック→CP倍率適用→ポイント付与をまとめて行うヘルパー
  */
 
 /**
@@ -14,8 +14,9 @@
  * @param {number} points - 基本付与ポイント（CP）
  * @param {string} description - 説明文
  * @param {string|null} action - アクション名（message, reaction_receive 等）。RPルールと照合に使用
+ * @param {object|null} pointRule - point_rulesのルールオブジェクト（日次上限チェック用）
  */
-export function earnPoints(dbHelpers, guildId, userId, username, displayName, avatar, points, description, action = null) {
+export function earnPoints(dbHelpers, guildId, userId, username, displayName, avatar, points, description, action = null, pointRule = null) {
     dbHelpers.getOrCreateMember(guildId, userId, username, displayName, avatar)
 
     // RP付与（actionが指定されている場合）
@@ -38,6 +39,27 @@ export function earnPoints(dbHelpers, guildId, userId, username, displayName, av
             }
         } catch (err) {
             console.error('RP earn error:', err.message)
+        }
+    }
+
+    // CP日次上限チェック（pointRuleが渡された場合）
+    if (pointRule) {
+        const capCount = pointRule.daily_cap_count || 0
+        const capPoints = pointRule.daily_cap_points || 0
+        if (capCount > 0 || capPoints > 0) {
+            try {
+                const stats = dbHelpers.getDailyCpStats(guildId, userId, description)
+                if (capCount > 0 && stats.count >= capCount) return
+                if (capPoints > 0 && stats.total >= capPoints) return
+                // ポイント上限に引っかかる場合、残り分だけ付与
+                if (capPoints > 0) {
+                    const remaining = capPoints - stats.total
+                    if (remaining <= 0) return
+                    points = Math.min(points, remaining)
+                }
+            } catch (err) {
+                console.error('CP daily cap check error:', err.message)
+            }
         }
     }
 

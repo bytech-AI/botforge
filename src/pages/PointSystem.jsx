@@ -141,7 +141,7 @@ export default function PointSystem() {
                         borderColor: 'rgba(124, 92, 252, 0.15)'
                     }}>
                         <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
-                            💡 各アクションごとに付与されるポイント数を設定します。クールダウンを設定すると、連続でのポイント獲得を制限できます。
+                            💡 各アクションごとに付与されるポイント数を設定します。クールダウン（秒間隔）、1日の回数上限、1日のポイント上限を組み合わせて制限できます。0 = 無制限。
                         </p>
                     </div>
 
@@ -191,6 +191,25 @@ export default function PointSystem() {
                                             value={rule.cooldown}
                                             onChange={e => updateRule(rule.id, 'cooldown', parseInt(e.target.value) || 0)}
                                             style={{ textAlign: 'center' }} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">1日の回数上限</label>
+                                        <input type="number" className="form-input" min="0"
+                                            value={rule.daily_cap_count || 0}
+                                            onChange={e => updateRule(rule.id, 'daily_cap_count', parseInt(e.target.value) || 0)}
+                                            placeholder="0 = 無制限"
+                                            style={{ textAlign: 'center' }} />
+                                    </div>
+                                    <div className="form-group" style={{ marginBottom: 0 }}>
+                                        <label className="form-label">1日のポイント上限</label>
+                                        <div className="flex-row">
+                                            <input type="number" className="form-input" step="0.1" min="0"
+                                                value={rule.daily_cap_points || 0}
+                                                onChange={e => updateRule(rule.id, 'daily_cap_points', parseFloat(e.target.value) || 0)}
+                                                placeholder="0 = 無制限"
+                                                style={{ textAlign: 'center' }} />
+                                            <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', fontWeight: 600 }}>pt</span>
+                                        </div>
                                     </div>
                                 </div>
                             )}

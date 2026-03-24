@@ -109,6 +109,8 @@ export default function RankSystem() {
             })
             if (!res.ok) throw new Error((await res.json()).error || '保存に失敗しました')
             showToast('シーズン設定を保存しました')
+            // 保存後に次回シーズン終了日を再取得
+            fetch(`/api/ranks/season/next?guildId=${selectedGuild}`).then(r => r.json()).then(d => setNextSeasonEnd(d.nextEnd || '')).catch(() => { })
         } catch (err) { showToast(err.message || '保存に失敗しました', 'error') }
     }
 

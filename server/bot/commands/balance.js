@@ -178,8 +178,12 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
 
             const lines = rules.map(r => {
                 const desc = descriptions[r.action] || r.label
-                const cd = r.cooldown > 0 ? ` (⏱ ${r.cooldown}秒間隔)` : ''
-                return `${desc}\n┗ **+${r.points} pt**${cd}`
+                const limits = []
+                if (r.cooldown > 0) limits.push(`⏱ ${r.cooldown}秒間隔`)
+                if (r.daily_cap_count > 0) limits.push(`📊 ${r.daily_cap_count}回/日`)
+                if (r.daily_cap_points > 0) limits.push(`🔒 ${r.daily_cap_points}pt/日`)
+                const limitText = limits.length > 0 ? ` (${limits.join(' | ')})` : ''
+                return `${desc}\n┗ **+${r.points} pt**${limitText}`
             })
 
             lines.push('\n**🤖 ポイント関連コマンド:**')

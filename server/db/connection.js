@@ -402,6 +402,9 @@ export function initDatabase() {
     // Xランク専用: member_ranksにx_rpカラム追加
     'ALTER TABLE member_ranks ADD COLUMN x_rp INTEGER DEFAULT NULL',
     // ボイスポイント不正取得対策
+    // CPアクション日次上限
+    'ALTER TABLE point_rules ADD COLUMN daily_cap_count INTEGER DEFAULT 0',
+    'ALTER TABLE point_rules ADD COLUMN daily_cap_points REAL DEFAULT 0',
     'ALTER TABLE point_economy_settings ADD COLUMN voice_min_members INTEGER DEFAULT 2',
     'ALTER TABLE point_economy_settings ADD COLUMN voice_require_activity INTEGER DEFAULT 0',
     'ALTER TABLE point_economy_settings ADD COLUMN voice_activity_timeout_minutes INTEGER DEFAULT 30',

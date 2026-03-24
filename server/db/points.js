@@ -37,10 +37,29 @@ export function getAllPointRules() {
 
 export function updatePointRules(rules) {
   const db = getDb()
-  const stmt = db.prepare('UPDATE point_rules SET points = ?, cooldown = ?, enabled = ? WHERE id = ?')
+  const stmt = db.prepare('UPDATE point_rules SET points = ?, cooldown = ?, enabled = ?, daily_cap_count = ?, daily_cap_points = ? WHERE id = ?')
   for (const rule of rules) {
-    stmt.run(rule.points, rule.cooldown, rule.enabled ? 1 : 0, rule.id)
+    stmt.run(rule.points, rule.cooldown, rule.enabled ? 1 : 0, rule.daily_cap_count || 0, rule.daily_cap_points || 0, rule.id)
   }
+}
+
+/**
+ * 今日の特定アクションによるCP獲得回数と合計ポイントを取得する
+ * @param {string} guildId - サーバーID
+ * @param {string} userId - ユーザーID
+ * @param {string} description - トランザクションのdescription（完全一致）
+ * @returns {{ count: number, total: number }}
+ */
+export function getDailyCpStats(guildId, userId, description) {
+  const db = getDb()
+  const today = new Date().toISOString().split('T')[0]
+  const result = db.prepare(`
+    SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total
+    FROM point_transactions
+    WHERE guild_id = ? AND to_user_id = ? AND type = 'earn'
+    AND description = ? AND DATE(created_at) = ?
+  `).get(guildId, userId, description, today)
+  return { count: result.count, total: result.total }
 }
 
 // ============================

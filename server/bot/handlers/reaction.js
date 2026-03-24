@@ -27,7 +27,8 @@ export function setupReactionHandler(client, dbHelpers, getPointRules) {
                     dbHelpers, guildId, user.id,
                     user.username, user.username,
                     user.displayAvatarURL({ size: 32 }),
-                    giveRule.points, 'リアクション付与', 'reaction_give'
+                    giveRule.points, 'リアクション付与', 'reaction_give',
+                    giveRule
                 )
             } catch (err) {
                 console.error('Point earn error (reaction_give):', err.message)
@@ -45,7 +46,8 @@ export function setupReactionHandler(client, dbHelpers, getPointRules) {
                         reaction.message.author.username,
                         reaction.message.author.username,
                         reaction.message.author.displayAvatarURL({ size: 32 }),
-                        receiveRule.points, 'リアクション受信', 'reaction_receive'
+                        receiveRule.points, 'リアクション受信', 'reaction_receive',
+                        receiveRule
                     )
                 } catch (err) {
                     console.error('Point earn error (reaction_receive):', err.message)

@@ -17,7 +17,11 @@ export function setupReactionHandler(client, dbHelpers, getPointRules) {
         if (user.bot || !reaction.message.guild) return
 
         const guildId = reaction.message.guild.id
+        const channelId = reaction.message.channel?.id
         const rules = getPointRules()
+
+        // チャンネル倍率を取得
+        const chMultiplier = channelId ? dbHelpers.getChannelMultiplier(guildId, channelId) : 1.0
 
         // リアクションを付けた人にポイント
         const giveRule = rules.find(r => r.action === 'reaction_give' && r.enabled)
@@ -27,7 +31,7 @@ export function setupReactionHandler(client, dbHelpers, getPointRules) {
                     dbHelpers, guildId, user.id,
                     user.username, user.username,
                     user.displayAvatarURL({ size: 32 }),
-                    giveRule.points, 'リアクション付与', 'reaction_give',
+                    giveRule.points * chMultiplier, 'リアクション付与', 'reaction_give',
                     giveRule
                 )
             } catch (err) {
@@ -46,7 +50,7 @@ export function setupReactionHandler(client, dbHelpers, getPointRules) {
                         reaction.message.author.username,
                         reaction.message.author.username,
                         reaction.message.author.displayAvatarURL({ size: 32 }),
-                        receiveRule.points, 'リアクション受信', 'reaction_receive',
+                        receiveRule.points * chMultiplier, 'リアクション受信', 'reaction_receive',
                         receiveRule
                     )
                 } catch (err) {

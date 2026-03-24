@@ -37,6 +37,8 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
         if (!checkCooldown(message.guild.id, message.author.id, 'message', msgRule.cooldown)) return
 
         try {
+            // チャンネル倍率を適用
+            const chMultiplier = dbHelpers.getChannelMultiplier(message.guild.id, message.channel.id)
             earnPoints(
                 dbHelpers,
                 message.guild.id,
@@ -44,7 +46,7 @@ export function setupMessageHandler(client, dbHelpers, getPointRules) {
                 message.author.username,
                 message.member?.displayName || message.author.username,
                 message.author.displayAvatarURL({ size: 32 }),
-                msgRule.points,
+                msgRule.points * chMultiplier,
                 'メッセージ送信',
                 'message',
                 msgRule

@@ -61,7 +61,7 @@ export async function handleGacha(interaction, dbHelpers, subCommand) {
                 )
                 .setFooter({ text: `${gacha.name} | 残高: ${Math.floor(member.total_points - gacha.cost + result.points)}pt` })
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
 
@@ -101,7 +101,7 @@ export async function handleGacha(interaction, dbHelpers, subCommand) {
                 )
                 .setFooter({ text: won ? 'おめでとう！次も挑戦しよう！' : '次こそはきっと...！' })
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
     }

@@ -205,7 +205,7 @@ export async function handleBalance(interaction, dbHelpers, subCommand, getPoint
                 .setDescription(lines.join('\n'))
                 .setFooter({ text: 'アクティブに活動してポイントを貯めよう！' })
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
     }

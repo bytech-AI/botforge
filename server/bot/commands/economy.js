@@ -67,7 +67,7 @@ export async function handleEconomy(interaction, dbHelpers, subCommand) {
                     { name: 'あなたの残高', value: `**${result.senderBalance.toLocaleString()}** pt`, inline: true },
                 )
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
 
@@ -100,7 +100,7 @@ export async function handleEconomy(interaction, dbHelpers, subCommand) {
                     { name: 'あなたの残高', value: `**${result.senderBalance.toLocaleString()}** pt`, inline: true },
                 )
 
-            await interaction.reply({ embeds: [embed] })
+            await interaction.reply({ embeds: [embed], ephemeral: true })
             break
         }
 

@@ -1,4 +1,5 @@
 import { getDb } from './connection.js'
+import { getDayBounds } from '../utils/time.js'
 
 // ============================
 // AI Scoring System DB Helpers
@@ -115,9 +116,9 @@ export function getScoringHistory(guildId, limit = 50) {
 /**
  * 採点統計を取得する
  */
-export function getScoringStats(guildId) {
+export function getScoringStats(guildId, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const stats = db.prepare(`
     SELECT
       COUNT(*) as total_scored,
@@ -128,7 +129,7 @@ export function getScoringStats(guildId) {
   const todayResult = db.prepare(`
     SELECT COUNT(*) as today_count
     FROM ai_scoring_history WHERE guild_id = ? AND created_at >= ? AND created_at < ?
-  `).get(guildId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
+  `).get(guildId, start, end)
   return {
     totalScored: stats.total_scored,
     averageScore: Math.round(stats.average_score * 100) / 100,
@@ -140,25 +141,25 @@ export function getScoringStats(guildId) {
 /**
  * 今日のギルドのAPI呼び出し回数を取得する
  */
-export function getDailyApiCount(guildId) {
+export function getDailyApiCount(guildId, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const result = db.prepare(`
     SELECT COUNT(*) as count
     FROM ai_scoring_history WHERE guild_id = ? AND created_at >= ? AND created_at < ?
-  `).get(guildId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
+  `).get(guildId, start, end)
   return result.count
 }
 
 /**
  * 今日のユーザーの採点回数を取得する
  */
-export function getUserDailyScoringCount(guildId, userId) {
+export function getUserDailyScoringCount(guildId, userId, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const result = db.prepare(`
     SELECT COUNT(*) as count
     FROM ai_scoring_history WHERE guild_id = ? AND user_id = ? AND created_at >= ? AND created_at < ?
-  `).get(guildId, userId, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
+  `).get(guildId, userId, start, end)
   return result.count
 }

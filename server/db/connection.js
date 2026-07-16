@@ -2,11 +2,12 @@ import Database from 'better-sqlite3'
 import { fileURLToPath } from 'url'
 import { dirname, join } from 'path'
 import { mkdirSync } from 'fs'
+import { getDateKey, shiftDateKey } from '../utils/time.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
-const dbPath = join(__dirname, '..', '..', 'data', 'botforge.db')
+const dbPath = process.env.BOTFORGE_DB_PATH || join(__dirname, '..', '..', 'data', 'botforge.db')
 
 let db
 
@@ -16,7 +17,7 @@ let db
  */
 export function initDatabase() {
   try {
-    mkdirSync(join(__dirname, '..', '..', 'data'), { recursive: true })
+    mkdirSync(dirname(dbPath), { recursive: true })
   } catch { }
 
   db = new Database(dbPath)
@@ -462,8 +463,8 @@ export function getDb() {
  * @param {string} taskName - タスク名
  * @returns {boolean} ロック取得成功ならtrue（=今日まだ実行していない）
  */
-export function acquireCronLock(taskName) {
-  const today = new Date().toISOString().split('T')[0]
+export function acquireCronLock(taskName, now = new Date()) {
+  const today = getDateKey(now)
   try {
     db.prepare('INSERT INTO cron_locks (task_name, run_date) VALUES (?, ?)').run(taskName, today)
     return true
@@ -476,8 +477,7 @@ export function acquireCronLock(taskName) {
 /**
  * 古いcronロックをクリーンアップする（7日以上前のロック）
  */
-export function cleanupCronLocks() {
-  const cutoff = new Date()
-  cutoff.setDate(cutoff.getDate() - 7)
-  db.prepare('DELETE FROM cron_locks WHERE run_date < ?').run(cutoff.toISOString().split('T')[0])
+export function cleanupCronLocks(now = new Date()) {
+  const cutoff = shiftDateKey(getDateKey(now), -7)
+  db.prepare('DELETE FROM cron_locks WHERE run_date < ?').run(cutoff)
 }

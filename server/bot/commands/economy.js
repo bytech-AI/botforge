@@ -109,9 +109,11 @@ export async function handleEconomy(interaction, dbHelpers, subCommand) {
             const result = dbHelpers.claimDaily(guildId, interaction.user.id)
 
             if (!result.success) {
-                const nextClaim = new Date(result.nextClaim)
+                const retryMessage = result.nextClaim
+                    ? `\n次のボーナスは <t:${Math.floor(new Date(result.nextClaim).getTime() / 1000)}:R> 受け取れます。`
+                    : ''
                 await interaction.reply({
-                    content: `⏰ ${result.error}\n次のボーナスは <t:${Math.floor(nextClaim.getTime() / 1000)}:R> 受け取れます。`,
+                    content: `⏰ ${result.error}${retryMessage}`,
                     ephemeral: true
                 })
                 return

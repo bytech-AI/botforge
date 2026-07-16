@@ -7,7 +7,7 @@ import multer from 'multer'
 import {
     connectBot, disconnectBot, getBotStatus, clearToken,
     autoReconnect, getGuilds, getGuildMembers, getClient,
-    registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, setupHandlers
+    registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, getBuiltinCommands, setupHandlers
 } from './bot.js'
 import { requireGuildId, requireIntParam, requireBody, maxLength, numberRange } from './middleware/validate.js'
 import { asyncHandler, notFoundHandler, globalErrorHandler } from './middleware/errorHandler.js'
@@ -47,12 +47,14 @@ import {
 } from './db.js'
 import { encryptSecret, setVoiceDebugMode, getVoiceDebugMode, getVoiceDebugLog, clearVoiceDebugLog } from './bot.js'
 import cron from 'node-cron'
+import { getAppTimeZone, getDateKey } from './utils/time.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
 
 const app = express()
 const PORT = process.env.PORT || 3001
+const BUILTIN_COMMAND_NAMES = new Set(getBuiltinCommands().map(command => command.name))
 
 app.use(cors())
 app.use(express.json({ limit: '1mb' }))
@@ -116,6 +118,9 @@ app.get('/api/commands', (req, res, next) => {
 
 app.post('/api/commands', (req, res, next) => {
     try {
+        if (BUILTIN_COMMAND_NAMES.has(req.body.name)) {
+            return res.status(400).json({ error: `/${req.body.name} はビルトインコマンド名のため使用できません` })
+        }
         const cmd = createCommand(req.body)
         res.json(cmd)
     } catch (err) { next(err) }
@@ -123,6 +128,9 @@ app.post('/api/commands', (req, res, next) => {
 
 app.put('/api/commands/:id', requireIntParam(), (req, res, next) => {
     try {
+        if (BUILTIN_COMMAND_NAMES.has(req.body.name)) {
+            return res.status(400).json({ error: `/${req.body.name} はビルトインコマンド名のため使用できません` })
+        }
         updateCommand(parseInt(req.params.id), req.body)
         res.json({ success: true })
     } catch (err) { next(err) }
@@ -905,8 +913,8 @@ app.post('/api/backup/upload', requireBotConnected, upload.single('database'), (
 // ============================
 // Cron Jobs
 // ============================
-// 毎日AM4:00 JST (= UTC 19:00) に減衰処理 + シーズンチェック
-cron.schedule('0 19 * * *', () => {
+// アプリのタイムゾーンで毎日 AM4:00 に減衰処理 + シーズンチェック
+cron.schedule('0 4 * * *', () => {
     try {
         // 冪等性チェック: 今日既に実行済みならスキップ
         if (!acquireCronLock('daily_maintenance')) {
@@ -925,7 +933,7 @@ cron.schedule('0 19 * * *', () => {
     } catch (err) {
         console.error('Cron error:', err.message)
     }
-})
+}, { timezone: getAppTimeZone() })
 
 // 毎分: 定時メッセージチェック
 cron.schedule('* * * * *', () => {
@@ -961,8 +969,8 @@ cron.schedule('* * * * *', () => {
 
                     // 重複実行防止（同日同メッセージを2回送らない）
                     if (msg.lastRun) {
-                        const lastDate = new Date(msg.lastRun).toISOString().split('T')[0]
-                        const todayDate = now.toISOString().split('T')[0]
+                        const lastDate = getDateKey(new Date(msg.lastRun), tz)
+                        const todayDate = getDateKey(now, tz)
                         if (lastDate === todayDate) continue
                     }
 

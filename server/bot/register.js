@@ -90,6 +90,16 @@ export function getBuiltinCommands() {
     ]
 }
 
+/** ビルトインと衝突するユーザー定義コマンドを同期対象から除外する。 */
+export function filterCustomCommands(commands) {
+    const builtinNames = new Set(getBuiltinCommands().map(command => command.name))
+    const enabled = commands.filter(command => command.enabled)
+    return {
+        commands: enabled.filter(command => !builtinNames.has(command.name)),
+        conflicts: enabled.filter(command => builtinNames.has(command.name)).map(command => command.name),
+    }
+}
+
 /**
  * ユーザー定義コマンドとビルトインコマンドをDiscordに登録する
  * @param {Array<{name: string, description?: string, enabled?: boolean, options?: Array<{name: string, type: string, description?: string, required?: boolean, choices?: string[]}>}>} commands - ユーザー定義コマンドの配列
@@ -103,9 +113,9 @@ export async function registerSlashCommands(commands, guildId) {
 
     const rest = new REST().setToken(botToken)
 
-    // ユーザー定義コマンドのビルド
-    const slashCommands = commands
-        .filter(cmd => cmd.enabled)
+    // ビルトイン名を常に優先し、重複名による Discord 側の同期全体失敗を防ぐ
+    const filtered = filterCustomCommands(commands)
+    const slashCommands = filtered.commands
         .map(cmd => {
             const builder = new SlashCommandBuilder()
                 .setName(cmd.name)
@@ -170,13 +180,13 @@ export async function registerSlashCommands(commands, guildId) {
                 Routes.applicationGuildCommands(client.user.id, guildId),
                 { body: allCommands }
             )
-            return { success: true, count: result.length }
+            return { success: true, count: result.length, conflicts: filtered.conflicts }
         } else {
             const result = await rest.put(
                 Routes.applicationCommands(client.user.id),
                 { body: allCommands }
             )
-            return { success: true, count: result.length }
+            return { success: true, count: result.length, conflicts: filtered.conflicts }
         }
     } catch (err) {
         throw new Error(`コマンド登録に失敗: ${err.message}`)

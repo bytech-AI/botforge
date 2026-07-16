@@ -144,6 +144,7 @@ export default function CommandBuilder() {
                 body: JSON.stringify(newCmd)
             })
             const created = await res.json()
+            if (!res.ok) throw new Error(created.error || '取り込みに失敗しました')
             setCommands([...commands, created])
             showToast(`/${regCmd.name} をダッシュボードに取り込みました`)
             // Open for editing
@@ -169,11 +170,13 @@ export default function CommandBuilder() {
 
         try {
             if (editingCommand) {
-                await fetch(`/api/commands/${editingCommand}`, {
+                const res = await fetch(`/api/commands/${editingCommand}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(formData)
                 })
+                const data = await res.json()
+                if (!res.ok) throw new Error(data.error || '更新に失敗しました')
                 setCommands(commands.map(c => c.id === editingCommand ? { ...formData, id: editingCommand } : c))
                 showToast('コマンドを更新しました')
             } else {
@@ -183,16 +186,13 @@ export default function CommandBuilder() {
                     body: JSON.stringify(formData)
                 })
                 const newCmd = await res.json()
+                if (!res.ok) throw new Error(newCmd.error || '追加に失敗しました')
                 setCommands([...commands, newCmd])
                 showToast('コマンドを追加しました')
             }
-        } catch {
-            if (editingCommand) {
-                setCommands(commands.map(c => c.id === editingCommand ? { ...formData, id: editingCommand } : c))
-            } else {
-                setCommands([...commands, { ...formData, id: Date.now() }])
-            }
-            showToast('コマンドを保存しました（ローカル）')
+        } catch (err) {
+            showToast(err.message || 'コマンドの保存に失敗しました', 'error')
+            return
         }
         setShowModal(false)
     }
@@ -230,7 +230,10 @@ export default function CommandBuilder() {
             })
             const data = await res.json()
             if (data.success) {
-                showToast(`✅ ${data.count}個のコマンドをDiscordに同期しました！（ポイントコマンド含む）`)
+                const conflictNote = data.conflicts?.length
+                    ? `（ビルトインと重複: /${data.conflicts.join(', /')} は除外）`
+                    : ''
+                showToast(`✅ ${data.count}個のコマンドをDiscordに同期しました！${conflictNote}`)
                 const regRes = await fetch(`/api/commands/registered${selectedGuild ? `?guildId=${selectedGuild}` : ''}`)
                 setRegisteredCommands(await regRes.json())
             } else {

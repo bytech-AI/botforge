@@ -4,7 +4,7 @@
  * index.js からのimportをそのまま維持するためにここで再エクスポートする。
  */
 export { connectBot, disconnectBot, getClient, getBotToken, getBotStatus, autoReconnect, clearToken, getGuilds, getGuildMembers, encryptSecret, decryptSecret } from './bot/client.js'
-export { registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand } from './bot/register.js'
+export { registerSlashCommands, fetchRegisteredCommands, deleteRegisteredCommand, getBuiltinCommands } from './bot/register.js'
 
 import { getClient } from './bot/client.js'
 import { Events, EmbedBuilder } from 'discord.js'

@@ -5,6 +5,7 @@
 
 import { decryptSecret, getClient } from '../client.js'
 import { EmbedBuilder } from 'discord.js'
+import { getDateKey } from '../../utils/time.js'
 
 // In-memory queue: array of { guildId, userId, channelId, messageId, content }
 const scoringQueue = []
@@ -14,6 +15,7 @@ const MAX_QUEUE_SIZE = 1000
 
 // ワーカーのインターバルID（クリーンアップ用）
 let workerIntervalId = null
+let activeItem = null
 
 /**
  * ワーカーを開始する（Bot起動時に1回呼ぶ）
@@ -25,12 +27,15 @@ export function startScoringWorker(dbHelpers) {
   if (workerIntervalId) clearInterval(workerIntervalId)
 
   workerIntervalId = setInterval(async () => {
-    if (scoringQueue.length === 0) return
+    if (activeItem || scoringQueue.length === 0) return
     const item = scoringQueue.shift()
+    activeItem = item
     try {
       await processScoring(item, dbHelpers)
     } catch (err) {
       console.error('AI scoring error:', err.message)
+    } finally {
+      activeItem = null
     }
   }, 5000) // 5秒ごと
 
@@ -83,20 +88,27 @@ export function enqueueForScoring(message, dbHelpers) {
   // サンプリング率（パーセンテージ）
   if (settings.samplingRate < 100 && Math.random() * 100 > settings.samplingRate) return
 
-  // 日次API上限
+  const dateKey = getDateKey()
+  const pendingForGuild = scoringQueue.filter(item => item.guildId === guildId && item.dateKey === dateKey).length
+    + (activeItem?.guildId === guildId && activeItem.dateKey === dateKey ? 1 : 0)
+
+  // 完了済みだけでなく処理待ち・処理中も含めて日次API上限を守る
   const dailyCount = dbHelpers.getDailyApiCount(guildId)
-  if (dailyCount >= settings.dailyApiLimit) return
+  if (dailyCount + pendingForGuild >= settings.dailyApiLimit) return
 
   // ユーザー日次上限
   const userCount = dbHelpers.getUserDailyScoringCount(guildId, message.author.id)
-  if (userCount >= settings.perUserDailyLimit) return
+  const pendingForUser = scoringQueue.filter(item => item.guildId === guildId && item.userId === message.author.id && item.dateKey === dateKey).length
+    + (activeItem?.guildId === guildId && activeItem.userId === message.author.id && activeItem.dateKey === dateKey ? 1 : 0)
+  if (userCount + pendingForUser >= settings.perUserDailyLimit) return
 
   scoringQueue.push({
     guildId,
     userId: message.author.id,
     channelId,
     messageId: message.id,
-    content
+    content,
+    dateKey,
   })
 }
 

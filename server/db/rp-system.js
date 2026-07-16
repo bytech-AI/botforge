@@ -1,5 +1,6 @@
 import { getDb } from './connection.js'
 import { addPoints, getOrCreateMember } from './points.js'
+import { getDateKey, getDayBounds, shiftDateKey } from '../utils/time.js'
 
 // ============================
 // RP (Rank Point) System
@@ -449,14 +450,14 @@ export function getCpMultiplier(guildId, userId) {
 /**
  * 特定アクションの今日のRP獲得合計を取得する
  */
-export function getDailyRpTotal(guildId, userId, source) {
+export function getDailyRpTotal(guildId, userId, source, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const result = db.prepare(`
     SELECT COALESCE(SUM(amount), 0) as total
     FROM rp_transactions
     WHERE guild_id = ? AND user_id = ? AND source = ? AND created_at >= ? AND created_at < ?
-  `).get(guildId, userId, source, today + 'T00:00:00.000Z', today + 'T23:59:59.999Z')
+  `).get(guildId, userId, source, start, end)
   return result.total
 }
 
@@ -470,9 +471,7 @@ export function applyDecay(guildId) {
   const db = getDb()
   const settings = getRankSettings(guildId)
   const config = getRankConfig(guildId)
-  const graceDate = new Date()
-  graceDate.setDate(graceDate.getDate() - settings.decay_grace_days)
-  const graceDateStr = graceDate.toISOString().split('T')[0]
+  const graceDateStr = shiftDateKey(getDateKey(), -settings.decay_grace_days)
 
   // 免除期限切れの処理
   db.prepare(`UPDATE member_ranks SET decay_exempt = 0
@@ -588,30 +587,33 @@ export function updateSeasonConfig(guildId, data) {
   db.prepare(`UPDATE season_config SET enabled = ?, cycle_type = ?, cycle_value = ?,
     start_date = ?, bonus_distribution = ?, notify_channel_id = ? WHERE guild_id = ?`).run(
     data.enabled ? 1 : 0, data.cycle_type || 'months', data.cycle_value || 1,
-    data.start_date || new Date().toISOString().split('T')[0],
+    data.start_date || getDateKey(),
     JSON.stringify(data.bonus_distribution || {}),
     data.notify_channel_id || '', guildId
   )
 }
 
-export function getNextSeasonEnd(guildId) {
+export function getNextSeasonEnd(guildId, now = new Date()) {
   const config = getSeasonConfig(guildId)
-  const start = new Date(config.start_date)
-  const now = new Date()
+  const today = getDateKey(now)
 
   if (config.cycle_type === 'months') {
-    let seasonEnd = new Date(start)
-    while (seasonEnd <= now) {
-      seasonEnd.setMonth(seasonEnd.getMonth() + config.cycle_value)
-    }
-    seasonEnd.setDate(seasonEnd.getDate() - 1)
-    return seasonEnd.toISOString().split('T')[0]
+    const [year, month, day] = config.start_date.split('-').map(Number)
+    let cycles = 1
+    let boundary
+    do {
+      const targetMonth = month - 1 + cycles * config.cycle_value
+      const lastDay = new Date(Date.UTC(year, targetMonth + 1, 0)).getUTCDate()
+      boundary = new Date(Date.UTC(year, targetMonth, Math.min(day, lastDay))).toISOString().slice(0, 10)
+      cycles += 1
+    } while (boundary <= today)
+    return shiftDateKey(boundary, -1)
   } else {
-    const diffDays = Math.floor((now - start) / 86400000)
+    const startMs = Date.parse(`${config.start_date}T00:00:00Z`)
+    const todayMs = Date.parse(`${today}T00:00:00Z`)
+    const diffDays = Math.max(0, Math.floor((todayMs - startMs) / 86400000))
     const cyclesPassed = Math.floor(diffDays / config.cycle_value)
-    const nextEnd = new Date(start)
-    nextEnd.setDate(nextEnd.getDate() + (cyclesPassed + 1) * config.cycle_value - 1)
-    return nextEnd.toISOString().split('T')[0]
+    return shiftDateKey(config.start_date, (cyclesPassed + 1) * config.cycle_value - 1)
   }
 }
 
@@ -619,18 +621,18 @@ export function getNextSeasonEnd(guildId) {
  * シーズン終了チェック＆実行
  * ボーナスはCPとして配布する（addPoints経由）
  */
-export function checkAndExecuteSeason(guildId) {
+export function checkAndExecuteSeason(guildId, now = new Date()) {
   const db = getDb()
   const config = getSeasonConfig(guildId)
   if (!config.enabled) return null
 
-  const nextEnd = getNextSeasonEnd(guildId)
-  const today = new Date().toISOString().split('T')[0]
+  const nextEnd = getNextSeasonEnd(guildId, now)
+  const today = getDateKey(now)
   if (today !== nextEnd) return null
 
   // 既に今日実行済みなら何もしない
   if (config.last_season_end) {
-    const lastEnd = new Date(config.last_season_end).toISOString().split('T')[0]
+    const lastEnd = getDateKey(new Date(config.last_season_end))
     if (lastEnd === today) return null
   }
 
@@ -701,9 +703,7 @@ function getSeasonStart(guildId) {
   const config = getSeasonConfig(guildId)
   const lastHistory = db.prepare('SELECT season_end FROM season_history WHERE guild_id = ? ORDER BY id DESC LIMIT 1').get(guildId)
   if (lastHistory) {
-    const d = new Date(lastHistory.season_end)
-    d.setDate(d.getDate() + 1)
-    return d.toISOString().split('T')[0]
+    return shiftDateKey(lastHistory.season_end, 1)
   }
   return config.start_date
 }

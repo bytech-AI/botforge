@@ -1,4 +1,5 @@
 import { getDb } from './connection.js'
+import { getAppTimeZone, getDayBounds, getDayBoundsForDateKey, shiftDateKey } from '../utils/time.js'
 
 // ============================
 // Gacha DB Helpers
@@ -50,15 +51,15 @@ export function updatePointRules(rules) {
  * @param {string} description - トランザクションのdescription（完全一致）
  * @returns {{ count: number, total: number }}
  */
-export function getDailyCpStats(guildId, userId, description) {
+export function getDailyCpStats(guildId, userId, description, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const result = db.prepare(`
     SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total
     FROM point_transactions
     WHERE guild_id = ? AND to_user_id = ? AND type = 'earn'
-    AND description = ? AND DATE(created_at) = ?
-  `).get(guildId, userId, description, today)
+    AND description = ? AND created_at >= ? AND created_at < ?
+  `).get(guildId, userId, description, start, end)
   return { count: result.count, total: result.total }
 }
 
@@ -249,52 +250,64 @@ export function updateEconomySettings(guildId, settings) {
   return getEconomySettings(guildId)
 }
 
-export function claimDaily(guildId, userId) {
+export function claimDaily(guildId, userId, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
-  const existing = db.prepare('SELECT * FROM daily_claims WHERE guild_id = ? AND user_id = ? AND claimed_at = ?').get(guildId, userId, today)
-  if (existing) {
-    return { success: false, error: '今日はすでにデイリーボーナスを受け取っています', nextClaim: getNextDayString() }
-  }
+  const timeZone = getAppTimeZone()
+  const { dateKey: today, start, end, nextClaim } = getDayBounds(now, timeZone)
+  const yesterday = shiftDateKey(today, -1)
+  const yesterdayBounds = getDayBoundsForDateKey(yesterday, timeZone)
 
-  const settings = getEconomySettings(guildId)
+  const tx = db.transaction(() => {
+    const existingClaim = db.prepare('SELECT 1 FROM daily_claims WHERE guild_id = ? AND user_id = ? AND claimed_at = ?').get(guildId, userId, today)
+    // 旧版は UTC 日付を daily_claims に保存していたため、移行日は取引時刻も確認する。
+    const existingTransaction = db.prepare(`
+      SELECT 1 FROM point_transactions
+      WHERE guild_id = ? AND to_user_id = ? AND type = 'daily'
+      AND created_at >= ? AND created_at < ? LIMIT 1
+    `).get(guildId, userId, start, end)
+    if (existingClaim || existingTransaction) {
+      return { success: false, error: '今日はすでにデイリーボーナスを受け取っています', nextClaim }
+    }
 
-  const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-  const yesterdayClaim = db.prepare('SELECT * FROM daily_claims WHERE guild_id = ? AND user_id = ? AND claimed_at = ?').get(guildId, userId, yesterday)
+    const settings = getEconomySettings(guildId)
+    if (!settings.enabled) {
+      return { success: false, error: 'ポイントシステムは現在無効です' }
+    }
 
-  let streak = yesterdayClaim ? (yesterdayClaim.streak + 1) : 1
-  let bonus = Math.min(
-    settings.daily_bonus_amount * Math.pow(settings.daily_bonus_streak_multiplier, streak - 1),
-    settings.max_daily_bonus
-  )
-  bonus = Math.round(bonus * 10) / 10
+    const member = getOrCreateMember(guildId, userId)
+    const yesterdayClaim = db.prepare('SELECT streak FROM daily_claims WHERE guild_id = ? AND user_id = ? AND claimed_at = ?').get(guildId, userId, yesterday)
+    const yesterdayTransaction = db.prepare(`
+      SELECT 1 FROM point_transactions
+      WHERE guild_id = ? AND to_user_id = ? AND type = 'daily'
+      AND created_at >= ? AND created_at < ? LIMIT 1
+    `).get(guildId, userId, yesterdayBounds.start, yesterdayBounds.end)
+    const claimedYesterday = yesterdayClaim || yesterdayTransaction
+    const previousStreak = yesterdayClaim?.streak ?? member.streak_days ?? 0
+    const streak = claimedYesterday ? previousStreak + 1 : 1
+    const bonus = Math.round(Math.min(
+      settings.daily_bonus_amount * Math.pow(settings.daily_bonus_streak_multiplier, streak - 1),
+      settings.max_daily_bonus
+    ) * 10) / 10
 
-  db.prepare('INSERT INTO daily_claims (guild_id, user_id, claimed_at, amount, streak) VALUES (?, ?, ?, ?, ?)')
-    .run(guildId, userId, today, bonus, streak)
+    db.prepare('INSERT INTO daily_claims (guild_id, user_id, claimed_at, amount, streak) VALUES (?, ?, ?, ?, ?)')
+      .run(guildId, userId, today, bonus, streak)
+    db.prepare('UPDATE member_points SET streak_days = ? WHERE guild_id = ? AND user_id = ?').run(streak, guildId, userId)
+    addPoints(guildId, userId, bonus, 'daily', `デイリーボーナス (${streak}日連続)`)
 
-  db.prepare('UPDATE member_points SET streak_days = ? WHERE guild_id = ? AND user_id = ?').run(streak, guildId, userId)
-
-  addPoints(guildId, userId, bonus, 'daily', `デイリーボーナス (${streak}日連続)`)
-
-  return { success: true, amount: bonus, streak, nextClaim: getNextDayString() }
+    return { success: true, amount: bonus, streak, nextClaim }
+  })
+  return tx()
 }
 
-function getNextDayString() {
-  const tomorrow = new Date()
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  tomorrow.setHours(0, 0, 0, 0)
-  return tomorrow.toISOString()
-}
-
-export function getDailyTransferTotal(guildId, userId) {
+export function getDailyTransferTotal(guildId, userId, now = new Date()) {
   const db = getDb()
-  const today = new Date().toISOString().split('T')[0]
+  const { start, end } = getDayBounds(now)
   const result = db.prepare(`
     SELECT COALESCE(SUM(ABS(amount)), 0) as total
     FROM point_transactions
     WHERE guild_id = ? AND from_user_id = ? AND type = 'transfer'
-    AND DATE(created_at) = ?
-  `).get(guildId, userId, today)
+    AND amount < 0 AND created_at >= ? AND created_at < ?
+  `).get(guildId, userId, start, end)
   return result.total
 }
 

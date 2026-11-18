@@ -87,6 +87,10 @@ export function getBuiltinCommands() {
             .setName('mypoints')
             .setDescription('ポイント・ランク・獲得履歴をまとめて表示します')
             .toJSON(),
+        new SlashCommandBuilder()
+            .setName('study')
+            .setDescription('学習サイトでの学習状況を表示します')
+            .toJSON(),
     ]
 }
 

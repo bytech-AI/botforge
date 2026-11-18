@@ -47,6 +47,9 @@ import {
 } from './db.js'
 import { encryptSecret, setVoiceDebugMode, getVoiceDebugMode, getVoiceDebugLog, clearVoiceDebugLog } from './bot.js'
 import cron from 'node-cron'
+import * as dbModule from './db.js'
+import { requireLmsSignature } from './integrations/lms-signature.js'
+import { applyLmsEvent, getLmsGuildId, getLmsMemberSummary, syncLmsRoles } from './integrations/lms.js'
 import { getAppTimeZone, getDateKey } from './utils/time.js'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -57,7 +60,8 @@ const PORT = process.env.PORT || 3001
 const BUILTIN_COMMAND_NAMES = new Set(getBuiltinCommands().map(command => command.name))
 
 app.use(cors())
-app.use(express.json({ limit: '1mb' }))
+// LMS 連携の署名を確かめるため、受け取った本文をそのまま req.rawBody にも残す
+app.use(express.json({ limit: '1mb', verify: (req, res, buf) => { req.rawBody = buf } }))
 
 // 破壊的操作の認可チェック: Bot接続済みであることを要求
 function requireBotConnected(req, res, next) {
@@ -908,6 +912,43 @@ app.post('/api/backup/upload', requireBotConnected, upload.single('database'), (
         if (req.file?.path) try { unlinkSync(req.file.path) } catch { }
         next(err)
     }
+})
+
+// ============================
+// 学習サイト（LMS）連携 API
+// ============================
+// LMS からだけ呼ぶ。合言葉の署名で守る（server/integrations/lms-signature.js）。ダッシュボードからは使わない
+
+/** 連携先の受講生サーバーが決まっていなければ止める */
+function requireLmsGuild(req, res, next) {
+    if (!getLmsGuildId()) return res.status(503).json({ error: '受講生サーバーが設定されていません（LMS_GUILD_ID）' })
+    next()
+}
+
+// 学習の出来事（まとめて送ってよい）。1件ずつの結果を返す。同じ eventId は2回付けない
+app.post('/api/integrations/lms/events', requireLmsSignature, requireLmsGuild, asyncHandler(async (req, res) => {
+    const events = Array.isArray(req.body?.events) ? req.body.events.slice(0, 200) : []
+    const guildId = getLmsGuildId()
+    const results = events.map(event => ({ eventId: event?.eventId, ...applyLmsEvent(dbModule, guildId, event) }))
+    res.json({ results })
+}))
+
+// プランに合わせたロールの付け外し（まとめて送ってよい）。plan が null の人は、連携で付けたロールを外す
+app.post('/api/integrations/lms/roles', requireLmsSignature, requireLmsGuild, asyncHandler(async (req, res) => {
+    const members = (Array.isArray(req.body?.members) ? req.body.members : [])
+        .filter(m => /^\d{15,20}$/.test(String(m?.discordUserId || '')))
+        .slice(0, 500)
+        .map(m => ({ discordUserId: String(m.discordUserId), plan: typeof m.plan === 'string' ? m.plan : null }))
+    const result = await syncLmsRoles(getClient(), getLmsGuildId(), members)
+    if (!result.ok) return res.status(503).json({ error: result.error })
+    res.json(result)
+}))
+
+// LMS のマイページに出すランク・ポイント
+app.get('/api/integrations/lms/members/:discordUserId', requireLmsSignature, requireLmsGuild, (req, res) => {
+    const { discordUserId } = req.params
+    if (!/^\d{15,20}$/.test(discordUserId)) return res.status(400).json({ error: 'discordUserId が正しくありません' })
+    res.json(getLmsMemberSummary(dbModule, getLmsGuildId(), discordUserId))
 })
 
 // ============================

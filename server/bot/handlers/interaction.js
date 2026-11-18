@@ -8,6 +8,7 @@ import { handleEconomy } from '../commands/economy.js'
 import { handleGacha } from '../commands/gacha.js'
 import { handleRanking, handleRank, handleRpRanking, handleSeason } from '../commands/ranking.js'
 import { handleShop, handleBuy } from '../commands/shop.js'
+import { handleStudy } from '../commands/study.js'
 
 // ビルトインコマンドのMap: コマンド名 → ハンドラー関数
 const builtinCommands = new Map()
@@ -55,6 +56,10 @@ function initBuiltinCommands() {
     // balance.js: mypoints（統合ビュー）
     builtinCommands.set('mypoints', (interaction, dbHelpers) =>
         handleBalance(interaction, dbHelpers, 'mypoints'))
+
+    // study.js: 学習サイト（LMS）の学習状況
+    builtinCommands.set('study', (interaction, dbHelpers) =>
+        handleStudy(interaction, dbHelpers))
 }
 
 // 初期化

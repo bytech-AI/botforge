@@ -381,6 +381,19 @@ export function initDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       UNIQUE(task_name, run_date)
     );
+
+    -- === 学習サイト（LMS）から届いた出来事（同じ出来事で2回付けないため） ===
+
+    CREATE TABLE IF NOT EXISTS lms_events (
+      event_id TEXT PRIMARY KEY,
+      guild_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      title TEXT DEFAULT '',
+      rp_added INTEGER DEFAULT 0,
+      cp_added REAL DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `)
 
   // Migrations for existing DBs
